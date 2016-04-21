@@ -516,7 +516,7 @@ class CliName:
         parser.add_argument('-eo',  '--encTitleKey_out', nargs='?', action='store',       dest='encTitleKey_out', const='encTitleKey.bin', help='Outputs concatenated inputs to encTitleKey.bin')
         parser.add_argument('-so',  '--seeddb_out',      nargs='?', action='store',       dest='seeddb_out',      const='seeddb.bin',      help='Outputs concatenated inputs to seeddb.bin')
         parser.add_argument('-to',  '--ticket_out',                 action='store_true',  dest='ticket_out',                               help='Outputs inputs to individual tickets <title_id>/<title_id>.tik')
-        parser.add_argument('-fi',  '--filter',                     action='store',       dest='filter',                                   help='Filters output. Available input: USA, JPN, TWN, HKG, KOR, EUR, decrypted, encrypted, crypto, <title>, <title_id>, dlc, update, app, dlplay, demo, sysapp, sysapplet, sysmod, sysfirm, sysarc, twlsys, twlarc')
+        parser.add_argument('-fi',  '--filter',                     action='store',       dest='filter',                                   help='Filters output. Available input: USA, JPN, TWN, HKG, KOR, EUR, decrypted, encrypted, crypto, title, dlc, update, app, dlplay, demo, sysapp, sysapplet, sysmod, sysfirm, sysarc, twlsys, twlarc, <title_id>, <title_name>, <image_size>')
         parser.add_argument('-f',   '--force',                      action='store_true',  dest='overwrite',                                help='Force overwrite files')
         parser.add_argument('-o',   '--out_dir',         nargs='?', action='store',       dest='output_dir',      const='output',          help='Custom output directory to store output')
         parser.add_argument('-nh',  '--no_hash',                    action='store_true',  dest='no_hash',                                  help='Skip hash check')
@@ -613,9 +613,43 @@ class CliName:
         sub_database = t_handler.title_database
         # Modify sub_database through filter
         if args.filter:
+            import difflib
             filters = [filter.upper() for filter in args.filter.split(',')]
             self.log.add("Filtering for %s" % filters) ##FIXIT
             if not sub_database: self.log.add(AppText().no_database_found, err=-1)
+            sub_filter = args.filter[:].split(',')
+            if 'decrypted' in filters: sub_filter.remove('decrypted');
+            if 'encrypted' in filters: sub_filter.remove('encrypted');
+            if 'crypto' in filters: sub_filter.remove('crypto');
+            if 'title' in filters: sub_filter.remove('title');
+            if 'update' in filters: sub_filter.remove('update');
+            if 'dlc' in filters: sub_filter.remove('dlc');
+            if 'app' in filters: sub_filter.remove('app');
+            if 'dlplay' in filters: sub_filter.remove('dlplay');
+            if 'demo' in filters: sub_filter.remove('demo');
+            if 'sysapp' in filters: sub_filter.remove('sysapp');
+            if 'sysapplet' in filters: sub_filter.remove('sysapplet');
+            if 'sysmod' in filters: sub_filter.remove('sysmod');
+            if 'sysfirm' in filters: sub_filter.remove('sysfirm');
+            if 'sysarc' in filters: sub_filter.remove('sysarc');
+            if 'twlsys' in filters: sub_filter.remove('twlsys');
+            if 'twlarc' in filters: sub_filter.remove('twlarc'); 
+            if '0' in filters: sub_filter.remove('0'); 
+            if '41' in filters: sub_filter.remove('41'); 
+            if '160' in filters: sub_filter.remove('160'); 
+            if '1024' in filters: sub_filter.remove('1024'); 
+            if '2048' in filters: sub_filter.remove('2048'); 
+            if '4096' in filters: sub_filter.remove('4096'); 
+            if '8192' in filters: sub_filter.remove('8192'); 
+            if '16384' in filters: sub_filter.remove('16384'); 
+            if '32768' in filters: sub_filter.remove('32768'); 
+            for entry in sub_filter:
+                if len(entry) != 16 and entry[:4] != '0004':
+                    sub_filter = [entry]
+            title_list=[]
+            for title_id in sub_database:
+                if sub_database[title_id]['title_name']: title_list.append(sub_database[title_id]['title_name'])
+            if sub_filter: magical_entry = difflib.get_close_matches(sub_filter[0], title_list, n=100, cutoff=0.48)
             tmp_database = {}
             for title_id in sub_database:
                 append = 0
@@ -636,7 +670,17 @@ class CliName:
                 if 'sysarc' in filters and sub_database[title_id]['type'] in ['0004001B', '000400DB', '0004009B']: append+=1
                 if 'twlsys' in filters and sub_database[title_id]['type'] == '00048005': append+=1
                 if 'twlarc' in filters and sub_database[title_id]['type'] == '0004800F': append+=1
+                if '0' in filters and sub_database[title_id]['image_size'] == '0': append+=1
+                if '41' in filters and sub_database[title_id]['image_size'] == '41': append+=1
+                if '160' in filters and sub_database[title_id]['image_size'] == '160': append+=1
+                if '1024' in filters and sub_database[title_id]['image_size'] == '1024': append+=1
+                if '2048' in filters and sub_database[title_id]['image_size'] == '2048': append+=1
+                if '4096' in filters and sub_database[title_id]['image_size'] == '4096': append+=1
+                if '8192' in filters and sub_database[title_id]['image_size'] == '8192': append+=1
+                if '16384' in filters and sub_database[title_id]['image_size'] == '16384': append+=1
+                if '32768' in filters and sub_database[title_id]['image_size'] == '32768': append+=1
                 if title_id in filters: append+=1
+                if sub_filter and sub_database[title_id]['title_name'] in magical_entry: append+=1
                 if append >= len(filters): tmp_database.update({title_id: sub_database[title_id]})
             sub_database = tmp_database
             
@@ -673,7 +717,7 @@ class CliName:
             enc_key_limit     = 32
             crypto_seed_limit = 32
             region_limit      = 3
-            size_limit        = 4
+            size_limit        = 6
             type_limit        = 20
             serial_limit      = 10
             publisher_limit   = 20

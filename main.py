@@ -516,7 +516,6 @@ class CliName:
         parser.add_argument('-eo',  '--encTitleKey_out', nargs='?', action='store',       dest='encTitleKey_out', const='encTitleKey.bin', help='Outputs concatenated inputs to encTitleKey.bin')
         parser.add_argument('-so',  '--seeddb_out',      nargs='?', action='store',       dest='seeddb_out',      const='seeddb.bin',      help='Outputs concatenated inputs to seeddb.bin')
         parser.add_argument('-to',  '--ticket_out',                 action='store_true',  dest='ticket_out',                               help='Outputs inputs to individual tickets <title_id>/<title_id>.tik')
-        parser.add_argument('-fi',  '--filter',                     action='store',       dest='filter',                                   help='Filters output. Available input: USA, JPN, TWN, HKG, KOR, EUR, decrypted, encrypted, crypto, dlc, update, app, dlplay, demo, sysapp, sysapplet, sysmod, sysfirm, sysarc, twlsys, twlarc')
         parser.add_argument('-f',   '--force',                      action='store_true',  dest='overwrite',                                help='Force overwrite files')
         parser.add_argument('-o',   '--out_dir',         nargs='?', action='store',       dest='output_dir',      const='output',          help='Custom output directory to store output')
         parser.add_argument('-nh',  '--no_hash',                    action='store_true',  dest='no_hash',                                  help='Skip hash check')

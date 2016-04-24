@@ -1,7 +1,5 @@
 *.bin
 *.dec
-*.ico
-*.bat
 *.txt
 ctr-common-1.crt
 ctr-common-1.key
@@ -10,4 +8,4 @@ ctr-common-1-key.dec
 ctr-common-1.p12
 make_cdn_cia.exe
 template scripts
-dbfiles
+data

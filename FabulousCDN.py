@@ -56,7 +56,8 @@ import xml.etree.ElementTree as ET
 # - Requester_queue provides interface for pulling and writing to HDD
 # - Writer_queue is exclusively called from worker_thread
 # Credits:
-# plailect, cearp
+# plailect, cearp - useful stuff
+# Analogman - adding another fucking useless format to deal with
 #----------------------------
 
 #====================#
@@ -79,7 +80,7 @@ class App:
         self.invalid_title_id     = u'Invalid Title Id: %s'
         self.invalid_title_key    = u'Invalid Title Key: %s'
         self.invalid_crypto  = u'Invalid Crypto Seed: %s'
-        self.invalid_console_id   = u'Invalid Common Key: %s'
+        self.invalid_console_id   = u'Invalid Console Id: %s'
         self.file_not_found       = u'File not found: %s doesn\'t exist.'
         self.no_database_found    = u'No entries in defined database.'
         self.incorrect_file_size  = u'Incorrect file size: %s'
@@ -155,7 +156,7 @@ class App:
         self.lock = threading.Lock()
 
 
-    def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, serial=None, image_crc=None, file_name=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, decrypted_title_key=None, encrypted_title_key=None, crypto_seed=None, console_id=None):
+    def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, serial=None, image_crc=None, file_name=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, decrypted_title_key=None, encrypted_title_key=None, crypto=None, console_id=None):
         entry_template = {
                 'database_index' : database_index,    #Useless metadata
                 'title_name'     : title_name,
@@ -175,7 +176,7 @@ class App:
                 'card'           : card,              #Useless metadata
                 'dec_key'        : decrypted_title_key,
                 'enc_key'        : encrypted_title_key,
-                'crypto'         : crypto_seed,
+                'crypto'         : crypto,
                 'console_id'     : console_id
                 }
         # All caps certain entries
@@ -306,7 +307,7 @@ class local_handler:
                 title_id = binascii.hexlify(data.read(8)).decode('utf-8')
                 key = binascii.hexlify(data.read(16)).decode('utf-8')
                 data.seek(8, os.SEEK_CUR)
-                self.app.add_entry(title_id, crypto_seed=key)
+                self.app.add_entry(title_id, crypto=key)
         if type.split('_')[1] == 'ticket':
             ticket = data.read()
             ticket = bytearray(ticket)
@@ -316,7 +317,6 @@ class local_handler:
             self.app.add_entry(title_id, encrypted_title_key=key)
         if type.split('_')[1] == 'ticketdb':
             tickets = data.read()
-            pattern = re.compile(b'Root-CA00000003-XS0000000c')
             ticket_offsets = [match.start() for match in re.finditer(b'Root-CA00000003-XS0000000c', tickets)]
             tickets = bytearray(tickets)
             for offset in ticket_offsets:
@@ -559,6 +559,33 @@ class CliFrontend:
         # Parse arguments (maybe add loading priority, ex. load xml after csv)
         if args.verbose:
             self.app.verbose = 1
+        # Single entry elements
+        if args.title_id:
+            if (len(args.title_id) is 16) and all(character in string.hexdigits for character in args.title_id):
+                self.app.add_entry(args.title_id)
+            else:
+                self.app.log(self.app.invalid_title_id % args.title_id, err=-1)
+            if args.dec_title_key:
+                if (len(args.dec_title_key) is 32) and all(character in string.hexdigits for character in args.dec_title_key):
+                    self.app.add_entry(args.title_id, decrypted_title_key=args.dec_title_key)
+                else:
+                    self.app.log(self.app.invalid_title_key % args.dec_title_key, err=-1)
+            if args.enc_title_key:
+                if (len(args.enc_title_key) is 32) and all(character in string.hexdigits for character in args.enc_title_key):
+                    self.app.add_entry(args.title_id, encrypted_title_key=args.enc_title_key)
+                else:
+                    self.app.log(self.app.invalid_title_key % args.enc_title_key, err=-1)
+            if args.crypto:
+                if (len(args.crypto) is 32) and all(character in string.hexdigits for character in args.crypto):
+                    self.app.add_entry(args.title_id, crypto=args.crypto)
+                else:
+                    self.app.log(self.app.invalid_crypto_seed % args.crypto, err=-1)
+            if args.console_id:
+                if (len(args.console_id) is 8) and all(character in string.hexdigits for character in args.console_id):
+                    self.app.add_entry(args.title_id, console_id=args.console_id)
+                else:
+                    self.app.log(self.app.invalid_console_id % args.console_id, err=-1)
+        # Multiple entry elements
         if args.decTitleKey_in: self.app.t.requester_queue(type='load_decrypted', file_in=args.decTitleKey_in)
         if args.encTitleKey_in: self.app.t.requester_queue(type='load_encrypted', file_in=args.encTitleKey_in)
         if args.seeddb_in: self.app.t.requester_queue(type='load_crypto', file_in=args.seeddb_in)
@@ -650,8 +677,8 @@ class GuiFrontend(Tk):
         self.frame = Frame(self)
         self.notebook = Notebook(self.frame)
         
-        frame_title_database = Frame(self.notebook, width=500, height=400)
-        frame_credits_page = Frame(self.notebook, width=500, height=400)
+        frame_title_database = Frame(self.notebook, width=500, height=407)
+        frame_credits_page = Frame(self.notebook, width=500, height=407)
         self.notebook.add(frame_title_database, text='Title Database')
         self.notebook.add(frame_credits_page, text='Credits')
         
@@ -674,7 +701,8 @@ class GuiFrontend(Tk):
                 print(e)
         self.ctree.bind("<Button-3>", context_menu)
         
-        
+        frame_title_database.rowconfigure(0, weight=1)
+        frame_title_database.columnconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         self.frame.columnconfigure(0, weight=2)
@@ -698,11 +726,18 @@ class GuiFrontend(Tk):
         for col in columns:
             self.ctree.heading(col, text=col)
         self.rebuild_treeview(self.ctree)
-        self.ctree.pack(fill=BOTH, expand=1)
+        y_scrollbar = Scrollbar(orient=VERTICAL, command= self.ctree.yview)
+        self.ctree['yscroll'] = y_scrollbar.set
+        
         self.search_frame = Frame(parent)
-        self.search_frame.pack(fill=X)
         self.search_bar = Entry(self.search_frame)
         self.search_bar.pack(fill=BOTH, expand=1)
+        self.search_frame.columnconfigure(0, weight=2)
+        self.search_frame.rowconfigure(0, weight=2)
+        
+        self.ctree.grid(row=0, column=0, sticky=NSEW)
+        y_scrollbar.grid(row=0, column=1, sticky=NS)
+        self.search_frame.grid(row=1, column=0, sticky=EW)
         #self.search_bar.grid(row=1, column=0)
         #self.search_bar.columnconfigure(0, weight=1)
         return self.ctree

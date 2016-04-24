@@ -55,6 +55,7 @@ import xml.etree.ElementTree as ET
 # Notes:
 # - Requester_queue provides interface for pulling and writing to HDD
 # - Writer_queue is exclusively called from worker_thread
+# - Common key? or Console ID? needs some verification as to what it is and if I should care about it
 # Credits:
 # plailect, cearp - useful stuff
 # Analogman - adding another fucking useless format to deal with
@@ -156,7 +157,7 @@ class App:
         self.lock = threading.Lock()
 
 
-    def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, serial=None, image_crc=None, file_name=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, decrypted_title_key=None, encrypted_title_key=None, crypto=None, console_id=None):
+    def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, serial=None, image_crc=None, file_name=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, decrypted_title_key=None, encrypted_title_key=None, crypto=None, console_id='00000000'):
         entry_template = {
                 'database_index' : database_index,    #Useless metadata
                 'title_name'     : title_name,
@@ -286,75 +287,91 @@ class local_handler:
             n_entries = len(data.read()) / 32
             data.seek(16, os.SEEK_SET)
             for i in range(int(n_entries)):
-                c_id = binascii.hexlify(data.read(4)).decode('utf-8')
-                data.seek(4, os.SEEK_CUR)
-                title_id = binascii.hexlify(data.read(8)).decode('utf-8')
-                key = binascii.hexlify(data.read(16)).decode('utf-8')
-                self.app.add_entry(title_id, decrypted_title_key=key, console_id=c_id)
+                #c_id = binascii.hexlify(data.read(4)).decode('utf-8')
+                data.seek(8, os.SEEK_CUR)
+                self.app.add_entry(
+                    title_id = binascii.hexlify(data.read(8)).decode('utf-8'),
+                    decrypted_title_key = binascii.hexlify(data.read(16)).decode('utf-8')
+                    )
         if type.split('_')[1] == 'encrypted':
             n_entries = len(data.read()) / 32
             data.seek(16, os.SEEK_SET)
             for i in range(int(n_entries)):
-                c_id = binascii.hexlify(data.read(4)).decode('utf-8')
-                data.seek(4, os.SEEK_CUR)
-                title_id = binascii.hexlify(data.read(8)).decode('utf-8')
-                key = binascii.hexlify(data.read(16)).decode('utf-8')
-                self.app.add_entry(title_id, encrypted_title_key=key, console_id=c_id)
+                #c_id = binascii.hexlify(data.read(4)).decode('utf-8')
+                data.seek(8, os.SEEK_CUR)
+                self.app.add_entry(
+                    title_id = binascii.hexlify(data.read(8)).decode('utf-8'),
+                    encrypted_title_key = binascii.hexlify(data.read(16)).decode('utf-8')
+                    )
         if type.split('_')[1] == 'crypto':
             n_entries = len(data.read()) / 32
             data.seek(16, os.SEEK_SET)
             for i in range(int(n_entries)):
-                title_id = binascii.hexlify(data.read(8)).decode('utf-8')
-                key = binascii.hexlify(data.read(16)).decode('utf-8')
+                self.app.add_entry(
+                    title_id=binascii.hexlify(data.read(8)).decode('utf-8'),
+                    crypto=binascii.hexlify(data.read(16)).decode('utf-8')
+                    )
                 data.seek(8, os.SEEK_CUR)
-                self.app.add_entry(title_id, crypto=key)
+                
         if type.split('_')[1] == 'ticket':
+            offset = 0x140
             ticket = data.read()
             ticket = bytearray(ticket)
-            title_id = binascii.hexlify(ticket[0x1DC:0x1E4]).decode('utf-8')
-            key = binascii.hexlify(ticket[0x1BF:0x1CF]).decode('utf-8')
             n_entries = 1
-            self.app.add_entry(title_id, encrypted_title_key=key)
+            self.app.add_entry(
+                title_id = binascii.hexlify(ticket[offset+0x9C:offset+0xA4]).decode('utf-8'),
+                encrypted_title_key = binascii.hexlify(ticket[offset+0x7F:offset+0x8F]).decode('utf-8'),
+                console_id = binascii.hexlify(ticket[offset+0x98:offset+0x9C]).decode('utf-8')
+                )
         if type.split('_')[1] == 'ticketdb':
-            tickets = data.read()
+            tickets = data.read()[:]
+            pattern = re.compile(b'Root-CA00000003-XS0000000c')
+            n_entries = len(re.findall(pattern, tickets))
             ticket_offsets = [match.start() for match in re.finditer(b'Root-CA00000003-XS0000000c', tickets)]
             tickets = bytearray(tickets)
             for offset in ticket_offsets:
-                enc_title_key    = tickets[offset+0x7F:offset+0x8F]
-                title_id         = tickets[offset+0x9C:offset+0xA4]
-                c_id = tickets[offset+0xB1]  # common_key_index is worthless for what this script wants to do, but extra checks are always nice
+                common_key_index = tickets[offset+0xB1]  # common_key_index is worthless for what this script wants to do, but extra checks are always nice
                 # Check if potentially valid ticket, offset+0x7C is always 0x1.
                 if tickets[offset+0x7C] != 0x1: continue
-                if c_id > 5: continue
+                if common_key_index > 5: continue
                 # Add entry to database
-                n_entries += 1
-                title_id = binascii.hexlify(title_id).decode('utf-8')
-                key = binascii.hexlify(enc_title_key).decode('utf-8')
-                self.app.add_entry(title_id, encrypted_title_key=key, console_id=c_id)
+                self.app.add_entry(
+                    title_id = binascii.hexlify(tickets[offset+0x9C:offset+0xA4]).decode('utf-8'),
+                    encrypted_title_key = binascii.hexlify(tickets[offset+0x7F:offset+0x8F]).decode('utf-8'),
+                    console_id = binascii.hexlify(tickets[offset+0x98:offset+0x9C]console_id).decode('utf-8')
+                    )
         if type.split('_')[1] == 'xml':
             tree = ET.ElementTree(file=data)
             root = tree.getroot()
             n_entries = len(root)
             for i in range(n_entries):
                 e=root[i]
-                self.app.add_entry(
-                    title_id = e[8].text,
-                    database_index = e[0].text,
-                    title_name = e[1].text,
-                    publisher = e[2].text,
-                    region = e[3].text,
-                    language = e[4].text,
-                    release_group = e[5].text,
-                    image_size = e[6].text,
-                    serial = e[7].text,
-                    image_crc = e[9].text,
-                    file_name = e[10].text,
-                    release_name = e[11].text,
-                    trimmed_size = e[12].text,
-                    firmware = e[13].text,
-                    type = e[14].text,
-                    card = e[15].text
-                    )
+                if root.tag == 'database':
+                    self.app.add_entry(
+                        title_name = e[0].text,
+                        region = e[1].text,
+                        serial = e[2].text,
+                        title_id = e[3].text
+                        )
+                elif root.tag == 'releases':
+                    self.app.add_entry(
+                        title_id = e[8].text,
+                        database_index = e[0].text,
+                        title_name = e[1].text,
+                        publisher = e[2].text,
+                        region = e[3].text,
+                        language = e[4].text,
+                        release_group = e[5].text,
+                        image_size = e[6].text,
+                        serial = e[7].text,
+                        image_crc = e[9].text,
+                        file_name = e[10].text,
+                        release_name = e[11].text,
+                        trimmed_size = e[12].text,
+                        firmware = e[13].text,
+                        type = e[14].text,
+                        card = e[15].text
+                        )
         if type.split('_')[1] == 'csv':
             data.readline() # Title header
             csv_file = data.read().decode('utf-8')
@@ -396,8 +413,11 @@ class thread_handler:
             data = self.app.w.request_url('http://3ds.nfshost.com/download')
         if type == 'pull_encrypted': 
             data = self.app.w.request_url('http://3ds.nfshost.com/downloadenc')
-        if type == 'pull_xml': 
-            data = self.app.w.request_url('http://3dsdb.com/xml.php')
+        if type == 'pull_xml':
+            if a['secondary'] == 'type_3dsdb':
+                data = self.app.w.request_url('http://3dsdb.com/xml.php')
+            elif a['secondary'] == 'type_groovycia':
+                data = self.app.w.request_url('http://ptrk25.github.io/GroovyFX/database/community.xml')
         if type == 'pull_metadata': data = 0
         if type in ['pull_decrypted', 'pull_encrypted', 'pull_xml']:
             type = 'load_%s' % type.split('_')[1]
@@ -431,7 +451,11 @@ class thread_handler:
         if type == 'write_encrypted': data = 0
         if type == 'write_crypto': data = 0
         if type == 'write_ticket': data = 0
-        if type == 'write_xml': data = 0
+        if type == 'write_xml':
+            if a['secondary'] == 'type_3dsdb':
+                data = 0
+            elif a['secondary'] == 'type_groovycia':
+                data = 0
         if type == 'write_csv': data = 0
         a.update({'data': data})
         queue_data.append(a)
@@ -465,12 +489,13 @@ class thread_handler:
         self.app.log('Write request completed: %s' % output) ##FIXIT
         self.write_queue.task_done()
         return
-    def requester_queue(self, title_id=None, key=None, type=None, file_in=None, output_dir=None, file_out=None, data=None, overwrite=False, tmp=False):
+    def requester_queue(self, title_id=None, key=None, type=None, secondary=None, file_in=None, output_dir=None, file_out=None, data=None, overwrite=False, tmp=False):
         # Adds a new user request to the queue
         args = {
             'title_id': title_id,
             'key': key,
             'type': type,
+            'secondary': secondary,   #Misc variable, xml_type, console_id when writing ticket,
             'file_in': file_in,
             'output_dir': output_dir,
             'file_out': file_out,
@@ -482,12 +507,13 @@ class thread_handler:
         thread_handle = threading.Thread(target=self.worker_thread)
         thread_handle.start()
         self.app.log(self.app.added_to_queue % type)  ##FIXIT
-    def writer_queue(self, title_id=None, key=None, type=None, file_in=None, output_dir=None, file_out=None, data=None, overwrite=False, tmp=False):
+    def writer_queue(self, title_id=None, key=None, type=None, secondary=None, file_in=None, output_dir=None, file_out=None, data=None, overwrite=False, tmp=False):
         # Adds a new write request to the queue
         args = {
             'title_id': title_id,
             'key': key,
             'type': type,
+            'secondary': secondary,
             'file_in': file_in,
             'output_dir': output_dir,
             'file_out': file_out,
@@ -528,7 +554,7 @@ class CliFrontend:
         parser.add_argument('-dk',  '--dec_key',                    action='store',       dest='dec_title_key',                            help='Add a decrypted title key for the Title ID')
         parser.add_argument('-ek',  '--enc_key',                    action='store',       dest='enc_title_key',                            help='Add an encrypted title key for the Title ID')
         parser.add_argument('-cs',  '--crypto',                     action='store',       dest='crypto',                              help='Add a crypto seed for the Title ID')
-        parser.add_argument('-ck',  '--console_id',                 action='store',       dest='console_id',                               help='Add a common key for the Title ID')
+        parser.add_argument('-cid',  '--console_id',                action='store',       dest='console_id',                               help='Add a common key for the Title ID')
         parser.add_argument('-di',  '--decTitleKey_in',  nargs='?', action='store',       dest='decTitleKey_in',  const='decTitleKey.bin', help='Parses decTitleKey.bin formatted files for decrypted title keys')
         parser.add_argument('-ei',  '--encTitleKey_in',  nargs='?', action='store',       dest='encTitleKey_in',  const='encTitleKey.bin', help='Parses encTitleKey.bin formatted files for encrypted title keys')
         parser.add_argument('-si',  '--seeddb_in',       nargs='?', action='store',       dest='seeddb_in',       const='seeddb.bin',      help='Parses seeddb.bin for 9.6+ NCCH crypto keys')
@@ -586,14 +612,29 @@ class CliFrontend:
                 else:
                     self.app.log(self.app.invalid_console_id % args.console_id, err=-1)
         # Multiple entry elements
-        if args.decTitleKey_in: self.app.t.requester_queue(type='load_decrypted', file_in=args.decTitleKey_in)
-        if args.encTitleKey_in: self.app.t.requester_queue(type='load_encrypted', file_in=args.encTitleKey_in)
-        if args.seeddb_in: self.app.t.requester_queue(type='load_crypto', file_in=args.seeddb_in)
-        if args.xml_in: self.app.t.requester_queue(type='load_xml', file_in=args.xml_in)
+        if args.decTitleKey_in:
+            for file in args.decTitleKey_in.split(','):
+                self.app.t.requester_queue(type='load_decrypted', file_in=file)
+        if args.encTitleKey_in:
+            for file in args.encTitleKey_in.split(','):
+                self.app.t.requester_queue(type='load_encrypted', file_in=file)
+        if args.seeddb_in:
+            for file in args.seeddb_in.split(','):
+                self.app.t.requester_queue(type='load_crypto', file_in=file)
+        if args.xml_in:
+            for file in args.xml_in.split(','):
+                self.app.t.requester_queue(type='load_xml', file_in=file)
+        if args.ticket_in:
+            for file in args.ticket_in.split(','):
+                self.app.t.requester_queue(type='load_ticket', file_in=file)
+        if args.ticketdb_in:
+            for file in args.ticketdb_in.split(','):
+                self.app.t.requester_queue(type='load_ticketdb', file_in=file)
         if args.pull_data:
             if args.pull_data == 'local':
                 self.app.t.requester_queue(type='load_csv', file_in='data/titles.csv')
                 self.app.t.requester_queue(type='load_xml', file_in='data/3dsreleases.xml')
+                self.app.t.requester_queue(type='load_xml', file_in='data/community.xml')
                 self.app.t.requester_queue(type='load_decrypted', file_in='data/decTitleKeys.bin')
                 self.app.t.requester_queue(type='load_encrypted', file_in='data/encTitleKeys.bin')
                 self.app.t.requester_queue(type='load_crypto', file_in='data/seeddb.bin')
@@ -601,7 +642,8 @@ class CliFrontend:
             elif args.pull_data in ['web', 'tmp']:
                 if args.pull_data == 'tmp': temp = True
                 else: temp = False
-                self.app.t.requester_queue(type='pull_xml', tmp=temp)
+                self.app.t.requester_queue(type='pull_xml', secondary='type_3dsdb', tmp=temp)
+                self.app.t.requester_queue(type='pull_xml', secondary='type_groovycia', tmp=temp)
                 self.app.t.requester_queue(type='pull_decrypted', tmp=temp)
                 self.app.t.requester_queue(type='pull_encrypted', tmp=temp)
         

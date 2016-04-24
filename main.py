@@ -24,10 +24,10 @@ if sys.version_info[0] != 3:
 #----------------------------
 
 from tkinter import *
-from tkinter import messagebox, ttk
-import argparse, binascii, io, os, queue, re, string, threading, urllib.request
+from tkinter import font
+from tkinter.ttk import *
+import argparse, binascii, errno, io, os, queue, re, string, threading, urllib.request
 import xml.etree.ElementTree as ET
-import errno
 #----------------------------
 # argparse : Parse cli arguments
 # binascii : Convert to/from bytes
@@ -40,6 +40,7 @@ import errno
 # urllib   : Request url data
 # xml      : Parse 3dsdb xml
 # errno    : pmkdir
+# time     : Checking execution duration
 #----------------------------
 # Todo:
 # - Download App data
@@ -53,6 +54,7 @@ import errno
 # - Implement no cia
 # - Add gui mode
 # - Add translation fanciness
+# - Add %name %region %title_id etc user-specified filenames
 #----------------------------
 
 
@@ -109,7 +111,7 @@ class AppText:
         self.game_demo            = u'Game Demo'
         self.addon_dlc            = u'Addon DLC'
         self.eshop_title          = u'eShop/App'
-        self.eshop_update         = u'eShop/App Update'
+        self.eshop_update         = u'Update'
         
         self.not_implemented_yet  = u'Not Implemented Yet: %s\nThis feature has not been implemented yet. It will be added in time.'        
 
@@ -142,37 +144,77 @@ class AppText:
 #====================#
 #   Backend Logic    #
 #====================#
-class webdata_handler:
+class thread_handler:
     def __init__(self, t_handler):
         self.log = t_handler.log
         ## Start generating queue for multithreading
         self.queue = queue.Queue()
         self.main_thread = threading.currentThread()
         self.queue_results = []
-    def request_queue(self, type, arg):
+        self.written_count = 0
+        # Setup writer thread
+        self.write_queue = queue.Queue()
+    def worker_thread(self):
+        type, arg, queue_results = self.queue.get()
+        w = webdata_handler(t_handler)
+        if type == 'dec': result = w.pull_nfshost(type=type, tmp=arg)
+        elif type == 'enc': result = w.pull_nfshost(type=type, tmp=arg)
+        elif type == 'xml': result = w.pull_community_xml(tmp=arg)
+        elif type == 'tik': result = t_handler.write_tik(arg)
+        elif type == 'meta': result = w.pull_title_metadata(arg)
+        queue_results.append([type, arg, result])
+        self.log.add('Request completed: %s' % type)  ##FIXIT
+        self.queue.task_done()
+        return
+    def writer_thread(self):
+        title_id, type, output_dir, file_out, data, overwrite = self.write_queue.get()
+        output = ''
+        if output_dir: directory = '%s/' % output_dir
+        else: directory = ''
+        if title_id: tid = '%s/' % title_id
+        else: tid = ''
+        if file_out: file_name = '%s' % file_out
+        else:
+            if type == 'tik': file_name = '%s.tik' % 'ticket'
+        output = '%s%s%s' % (directory, tid, file_name)
+        self.log.add('Write request recieved: %s' % output)  ##FIXIT
+        if not overwrite and os.path.isfile(output): return self.log.add(AppText().failed_overwrite % output, err=-1) ## FIXIT
+        if output_dir and not os.path.exists(output_dir): pmkdir(output_dir)
+        if title_id and not os.path.exists(title_id): pmkdir(directory+tid)
+        with open(output, 'wb') as file_handler:
+            file_handler.write(data)
+            file_handler.close()
+        self.written_count += 1
+        self.log.add(self.written_count)
+        self.log.add('Write request completed: %s' % output) ##FIXIT
+        self.write_queue.task_done()
+        return
+    def requester_queue(self, type, arg):
         self.log.add(AppText().added_to_queue % type)
         self.queue.put((type, arg, self.queue_results))
         t = threading.Thread(target=self.worker_thread)
-        t.setDaemon(True)
         t.start()
+    def writer_queue(self, title_id=None, type=None, output_dir=None, file_out=None, data=None, overwrite=None):
+        # If the writer thread is active, wait for it to rejoin main thread
+        for thread in threading.enumerate():
+            if thread is self.writer_thread:
+                thread.join()
+        # Spawn new writer thread when last writer thread is completed and request is recieved
+        self.writer_handle = threading.Thread(target=self.writer_thread, name='Thread-Writer')
+        #self.writer_handle.setDaemon(True)
+        self.writer_handle.start()
+        self.write_queue.put((title_id, type, output_dir, file_out, data, overwrite))
     def join_queue(self):
         # Call to wait for queue to finish before continuing
         for thread in threading.enumerate():
             if thread is self.main_thread:
                 continue
             thread.join()
-    def worker_thread(self):
-        thread = threading.currentThread()
-        type, arg, queue_results = self.queue.get()
-        if type == 'dec': result = self.pull_nfshost(type=type, tmp=arg)
-        elif type == 'enc': result = self.pull_nfshost(type=type, tmp=arg)
-        elif type == 'xml': result = self.pull_community_xml(tmp=arg)
-        elif type == 'tmd': result = self.pull_tmd(arg)
-        elif type == 'meta': result = self.pull_title_metadata(arg)
-        queue_results.append([type, arg, result])
-        self.queue.task_done()
-        return
+        
 
+class webdata_handler:
+    def __init__(self, t_handler):
+        self.log = t_handler.log
     def pull_nfshost(self, type=None, tmp=None):
         url = 'http://3ds.nfshost.com/download'
         if type == 'enc': url = '%s%s' % (url, type)
@@ -216,7 +258,12 @@ class webdata_handler:
                 if(attempt < n_of_attempts):
                     self.log.add(AppText().request_url_data % (url, attempt+1, n_of_attempts))
                     url_data = urllib.request.urlopen(url)
-            except urllib.URLError as e:
+            except urllib.error.HTTPError as e:
+                self.log.add('Failed to load URL: %s\n%s' %(url, e)) ##FIXIT
+                error = True
+                continue
+            except urllib.error.URLError as e:
+                self.log.add('Failed to load URL: %s\n%s' %(url, e))  ##FIXIT
                 error = True
                 continue
             error = False
@@ -230,10 +277,7 @@ class title_database_handler:
     def __init__(self):
         self.title_database = {}
         self.log = logging_handler()
-        self.w_handler = webdata_handler(self)
-        # Ticket template
-        self.ticket_template = '00010004d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d434130303030303030332d585330303030303030630000000000000000000000000000000000000000000000000000000000000000000000000000feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface010000CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC00000000000000000000000000AAAAAAAAAAAAAAAA00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010014000000ac000000140001001400000000000000280000000100000084000000840003000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
-        self.ticket_magic    = '00010004919ebe464ad0f552cd1b72e7884910cf55a9f02e50789641d896683dc005bd0aea87079d8ac284c675065f74c8bf37c88044409502a022980bb8ad48383f6d28a79de39626ccb2b22a0f19e41032f094b39ff0133146dec8f6c1a9d55cd28d9e1c47b3d11f4f5426c2c780135a2775d3ca679bc7e834f0e0fb58e68860a71330fc95791793c8fba935a7a6908f229dee2a0ca6b9b23b12d495a6fe19d0d72648216878605a66538dbf376899905d3445fc5c727a0e13e0e2c8971c9cfa6c60678875732a4e75523d2f562f12aabd1573bf06c94054aefa81a71417af9a4a066d0ffc5ad64bab28b1ff60661f4437d49e1e0d9412eb4bcacf4cfd6a3408847982000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d43413030303030303033000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000158533030303030303063000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000137a0894ad505bb6c67e2e5bdd6a3bec43d910c772e9cc290da58588b77dcc11680bb3e29f4eabbb26e98c2601985c041bb14378e689181aad770568e928a2b98167ee3e10d072beef1fa22fa2aa3e13f11e1836a92a4281ef70aaf4e462998221c6fbb9bdd017e6ac590494e9cea9859ceb2d2a4c1766f2c33912c58f14a803e36fccdcccdc13fd7ae77c7a78d997e6acc35557e0d3e9eb64b43c92f4c50d67a602deb391b06661cd32880bd64912af1cbcb7162a06f02565d3b0ece4fcecddae8a4934db8ee67f3017986221155d131c6c3f09ab1945c206ac70c942b36f49a1183bcd78b6e4b47c6c5cac0f8d62f897c6953dd12f28b70c5b7df751819a9834652625000100010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010003704138efbbbda16a987dd901326d1c9459484c88a2861b91a312587ae70ef6237ec50e1032dc39dde89a96a8e859d76a98a6e7e36a0cfe352ca893058234ff833fcb3b03811e9f0dc0d9a52f8045b4b2f9411b67a51c44b5ef8ce77bd6d56ba75734a1856de6d4bed6d3a242c7c8791b3422375e5c779abf072f7695efa0f75bcb83789fc30e3fe4cc8392207840638949c7f688565f649b74d63d8d58ffadda571e9554426b1318fc468983d4c8a5628b06b6fc5d507c13e7a18ac1511eb6d62ea5448f83501447a9afb3ecc2903c9dd52f922ac9acdbef58c6021848d96e208732d3d1d9d9ea440d91621c7a99db8843c59c1f2e2c7d9b577d512c166d6f7e1aad4a774a37447e78fe2021e14a95d112a068ada019f463c7a55685aabb6888b9246483d18b9c806f474918331782344a4b8531334b26303263d9d2eb4f4bb99602b352f6ae4046c69a5e7e8e4a18ef9bc0a2ded61310417012fd824cc116cfb7c4c1f7ec7177a17446cbde96f3edd88fcd052f0b888a45fdaf2b631354f40d16e5fa9c2c4eda98e798d15e6046dc5363f3096b2c607a9d8dd55b1502a6ac7d3cc8d8c575998e7d796910c804c495235057e91ecd2637c9c1845151ac6b9a0490ae3ec6f47740a0db0ba36d075956cee7354ea3e9a4f2720b26550c7d394324bc0cb7e9317d8a8661f42191ff10b08256ce3fd25b745e5194906b4d61cb4c2e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f7400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001434130303030303030330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007be8ef6cb279c9e2eee121c6eaf44ff639f88f078b4b77ed9f9560b0358281b50e55ab721115a177703c7a30fe3ae9ef1c60bc1d974676b23a68cc04b198525bc968f11de2db50e4d9e7f071e562dae2092233e9d363f61dd7c19ff3a4a91e8f6553d471dd7b84b9f1b8ce7335f0f5540563a1eab83963e09be901011f99546361287020e9cc0dab487f140d6626a1836d27111f2068de4772149151cf69c61ba60ef9d949a0f71f5499f2d39ad28c7005348293c431ffbd33f6bca60dc7195ea2bcc56d200baf6d06d09c41db8de9c720154ca4832b69c08c69cd3b073a0063602f462d338061a5ea6c915cd5623579c3eb64ce44ef586d14baaa8834019b3eebeed3790001000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        self.thread_handler = thread_handler(self)
     def load_bin(self, file_in, type=None, direct=None):
         ## If direct, it's from the web, thus skip all checks and "file_handler" == "direct", "file_in" == "url"
         if not direct:
@@ -334,30 +378,11 @@ class title_database_handler:
                 self.add_entry(title_id, encrypted_title_key=key)
         self.log.add(AppText().imported_file % (int(n_entries), file_in))
     def check_decrypted_title_key(self, title_id):
-        self.log.add(AppText().not_implemented_yet % 'check decrypted title key')
+        self.log.add(AppText().not_implemented_yet % 'check decrypted title key')  ##FIXIT
     def write_bin(self, overwrite=False, database=None, out_dir=None, title_id=None, file_out=None, type=None):
-        # Create output filename and path
-        output = ''
-        if out_dir:
-            pmkdir(out_dir)
-            output += out_dir+'/'
-        if title_id:
-            pmkdir(output+title_id)
-            output += title_id+'/'
-        if file_out:
-            output += file_out
-        elif type == 'dec':
-            output += 'decTitleKey.bin'
-        elif type == 'enc':
-            output += 'encTitleKey.bin'
-        elif type == 'seed':
-            output += 'seeddb.bin'
-        elif type == 'tik':
-            output += '%s.tik' % title_id
-        elif type == 'xml':
-            output += '3dsreleases.xml'
-        if os.path.isfile(output) and overwrite == False: return self.log.add(AppText().failed_overwrite % output, err=-1)
         # Generate entries in database to file
+        n_entries=0
+        output = ''
         entry_list = ''
         for title_id in database:
             if type in ['dec', 'enc']:
@@ -377,46 +402,67 @@ class title_database_handler:
                 rev_title_id = ''.join(reversed([title_id[i:i+2] for i in range(0, len(title_id), 2)]))
                 string_order = '{0}{1}{2}{2}'
                 sect1, sect2, sect3, sect4 = (rev_title_id, database[title_id]['crypto_seed'], reserved, None)
-            elif type == 'tik':
-                if not database[title_id]['enc_key']: self.log.add('Skipping %s, missing encrypted key.' % title_id ,err=-1); continue  ##FIXIT
-                self.w_handler.request_queue('tmd', title_id)
-                string_order = '{0}{1}{2}{3}'
-                ticket_template = io.StringIO(self.ticket_template[:])
-                tik_head = 894
-                sect1 = ticket_template.read(tik_head)
-                ## Wait for result in w_handler
-                self.w_handler.join_queue()
-                for result in self.w_handler.queue_results:
-                    if title_id in result and result[2]:
-                        tmd = result[2]; break
-                tmd.seek(476)
-                tmd_bytes = binascii.hexlify(tmd.read(2)).decode('utf-8')
-                sect2 = '{0}{3:0<26.26}{1}{3:0<4.4}{2}'.format(database[title_id]['enc_key'], title_id, tmd_bytes,''.rjust(2, str(0)))
-                ticket_template.seek(tik_head+82)
-                sect3 = ticket_template.read()
-                sect4 = self.ticket_magic[:]
-            elif type == 'xml':
-                self.log.add(AppText().not_implemented_yet, err=-1)  ##FIXIT
             entry = string_order.format(sect1, sect2, sect3, sect4)
             entry_list += entry
         # Add entries if entry_list has at least one entry
         if entry_list:
+            if out_dir: directory = '%s/' % out_dir
+            else: directory = ''
+            if title_id: tid = '%s/' % title_id
+            else: tid = ''
+            if file_out: file_name = '%s' % file_out
+            else:
+                if type == 'dec': file_name = 'decTitleKeys.bin'
+                if type == 'enc': file_name = 'encTitleKeys.bin'
+                if type == 'seed': file_name = 'seeddb.bin'
+            output = '%s%s%s' % (directory, tid, file_name)
+            if not overwrite and os.path.isfile(output): return self.log.add(AppText().failed_overwrite % output, err=-1) ## FIXIT
+            if out_dir and not os.path.exists(out_dir): pmkdir(out_dir)
+            if title_id and not os.path.exists(title_id): pmkdir(directory+tid)
             with open(output, 'wb') as file_handler:
-                if type in ['enc', 'dec', 'seed']:
-                    n_entries = int(len(entry_list) / 64)
-                    entry_count = hex(n_entries).split('x')[1].zfill(8)
-                    entry_count = '{0}{0}{0}{1}'.format(reserved,entry_count)
-                    entry_count = ''.join(reversed([entry_count[i:i+2] for i in range(0, len(entry_count), 2)]))
-                    file_handler.write(binascii.unhexlify(entry_count))
-                elif type == 'tik':
-                    if not database[title_id]['enc_key']: n_entries = 0
-                    else: n_entries = 1
-                elif type == 'xml':
-                    # Write xml header 
-                    self.log.add(AppText().not_implemented_yet, err=-1)  ##FIXIT
+                n_entries = int(len(entry_list) / 64)
+                entry_count = hex(n_entries).split('x')[1].zfill(8)
+                entry_count = '{0}{0}{0}{1}'.format(reserved,entry_count)
+                entry_count = ''.join(reversed([entry_count[i:i+2] for i in range(0, len(entry_count), 2)]))
+                file_handler.write(binascii.unhexlify(entry_count))
                 file_handler.write(binascii.unhexlify(entry_list))
                 file_handler.close()
         self.log.add(AppText().exported_file % (n_entries, output))
+    def write_tik(self, args):
+        # Ticket template
+        self.ticket_template = '00010004d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d434130303030303030332d585330303030303030630000000000000000000000000000000000000000000000000000000000000000000000000000feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface010000CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC00000000000000000000000000AAAAAAAAAAAAAAAA00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010014000000ac000000140001001400000000000000280000000100000084000000840003000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        self.ticket_magic    = '00010004919ebe464ad0f552cd1b72e7884910cf55a9f02e50789641d896683dc005bd0aea87079d8ac284c675065f74c8bf37c88044409502a022980bb8ad48383f6d28a79de39626ccb2b22a0f19e41032f094b39ff0133146dec8f6c1a9d55cd28d9e1c47b3d11f4f5426c2c780135a2775d3ca679bc7e834f0e0fb58e68860a71330fc95791793c8fba935a7a6908f229dee2a0ca6b9b23b12d495a6fe19d0d72648216878605a66538dbf376899905d3445fc5c727a0e13e0e2c8971c9cfa6c60678875732a4e75523d2f562f12aabd1573bf06c94054aefa81a71417af9a4a066d0ffc5ad64bab28b1ff60661f4437d49e1e0d9412eb4bcacf4cfd6a3408847982000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d43413030303030303033000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000158533030303030303063000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000137a0894ad505bb6c67e2e5bdd6a3bec43d910c772e9cc290da58588b77dcc11680bb3e29f4eabbb26e98c2601985c041bb14378e689181aad770568e928a2b98167ee3e10d072beef1fa22fa2aa3e13f11e1836a92a4281ef70aaf4e462998221c6fbb9bdd017e6ac590494e9cea9859ceb2d2a4c1766f2c33912c58f14a803e36fccdcccdc13fd7ae77c7a78d997e6acc35557e0d3e9eb64b43c92f4c50d67a602deb391b06661cd32880bd64912af1cbcb7162a06f02565d3b0ece4fcecddae8a4934db8ee67f3017986221155d131c6c3f09ab1945c206ac70c942b36f49a1183bcd78b6e4b47c6c5cac0f8d62f897c6953dd12f28b70c5b7df751819a9834652625000100010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010003704138efbbbda16a987dd901326d1c9459484c88a2861b91a312587ae70ef6237ec50e1032dc39dde89a96a8e859d76a98a6e7e36a0cfe352ca893058234ff833fcb3b03811e9f0dc0d9a52f8045b4b2f9411b67a51c44b5ef8ce77bd6d56ba75734a1856de6d4bed6d3a242c7c8791b3422375e5c779abf072f7695efa0f75bcb83789fc30e3fe4cc8392207840638949c7f688565f649b74d63d8d58ffadda571e9554426b1318fc468983d4c8a5628b06b6fc5d507c13e7a18ac1511eb6d62ea5448f83501447a9afb3ecc2903c9dd52f922ac9acdbef58c6021848d96e208732d3d1d9d9ea440d91621c7a99db8843c59c1f2e2c7d9b577d512c166d6f7e1aad4a774a37447e78fe2021e14a95d112a068ada019f463c7a55685aabb6888b9246483d18b9c806f474918331782344a4b8531334b26303263d9d2eb4f4bb99602b352f6ae4046c69a5e7e8e4a18ef9bc0a2ded61310417012fd824cc116cfb7c4c1f7ec7177a17446cbde96f3edd88fcd052f0b888a45fdaf2b631354f40d16e5fa9c2c4eda98e798d15e6046dc5363f3096b2c607a9d8dd55b1502a6ac7d3cc8d8c575998e7d796910c804c495235057e91ecd2637c9c1845151ac6b9a0490ae3ec6f47740a0db0ba36d075956cee7354ea3e9a4f2720b26550c7d394324bc0cb7e9317d8a8661f42191ff10b08256ce3fd25b745e5194906b4d61cb4c2e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f7400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001434130303030303030330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007be8ef6cb279c9e2eee121c6eaf44ff639f88f078b4b77ed9f9560b0358281b50e55ab721115a177703c7a30fe3ae9ef1c60bc1d974676b23a68cc04b198525bc968f11de2db50e4d9e7f071e562dae2092233e9d363f61dd7c19ff3a4a91e8f6553d471dd7b84b9f1b8ce7335f0f5540563a1eab83963e09be901011f99546361287020e9cc0dab487f140d6626a1836d27111f2068de4772149151cf69c61ba60ef9d949a0f71f5499f2d39ad28c7005348293c431ffbd33f6bca60dc7195ea2bcc56d200baf6d06d09c41db8de9c720154ca4832b69c08c69cd3b073a0063602f462d338061a5ea6c915cd5623579c3eb64ce44ef586d14baaa8834019b3eebeed3790001000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        w = webdata_handler(t_handler)
+        # Pass arguments as an array [title_id, database, output_dir, file_out, overwrite]
+        arguments = [None, None, None, None, None]
+        for i in range(len(arguments)):
+            try:
+                arguments[i] = args[i]
+            except IndexError: pass
+        title_id = arguments[0]
+        database = arguments[1]
+        out_dir = arguments[2]
+        file_out = arguments[3]
+        overwrite = arguments[4]
+        if not database[title_id]['enc_key']: return self.log.add('Skipping %s, missing encrypted key.' % title_id ,err=-1)  ##FIXIT
+        # Get required tmd data
+        tmd = w.pull_tmd(title_id)
+        tmd.seek(476)
+        tmd_bytes = binascii.hexlify(tmd.read(2)).decode('utf-8')
+        # Setup ticket template
+        ticket_template = io.StringIO(self.ticket_template[:])
+        tik_head = 894
+        ticket_head = ticket_template.read(tik_head)
+        ticket_template.seek(tik_head+82)
+        ticket_tail = ticket_template.read()
+        ticket_inject = '{0}{3:0<26.26}{1}{3:0<4.4}{2}'.format(database[title_id]['enc_key'], title_id, tmd_bytes,''.rjust(2, str(0)))
+        ticket_magic = self.ticket_magic[:]
+        # Build ticket
+        ticket = '%s%s%s%s' % (ticket_head, ticket_inject, ticket_tail, ticket_magic)
+        self.log.add('Ticket %s generated.' % title_id)   ##FIXIT
+        self.thread_handler.writer_queue(title_id, 'tik', out_dir, file_out, binascii.unhexlify(ticket), overwrite)
+    def filter_database(self):
+        pass   ##FIXIT
     def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, serial=None, image_crc=None, filename=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, decrypted_title_key=None, encrypted_title_key=None, crypto_seed=None, common_key=None):
         title_id = str(title_id).upper()
         if title_id in self.title_database.keys():
@@ -531,7 +577,7 @@ class CliName:
         if not any([args.title_id, args.dec_title_key, args.enc_title_key, args.pull_data, args.decTitleKey_in, args.encTitleKey_in, args.seeddb_in, args.ticket_in, args.ticketdb_in, args.filter]) or args.gui_mode:
             self.log.add(AppText().force_gui_mode)
             self.args.gui_mode = True
-            return
+            #return
         # Check for verbose
         if args.verbose:
             self.log.verbose = True
@@ -604,19 +650,19 @@ class CliName:
                 t_handler.load_bin('data/3dsreleases.xml', type='xml')
                 t_handler.load_bin('data/ticket.db')
             elif args.pull_data in ['web', 'tmp']:
-                t_handler.w_handler.request_queue('enc', args.pull_data)
-                t_handler.w_handler.request_queue('dec', args.pull_data)
-                t_handler.w_handler.request_queue('xml', args.pull_data)
-                t_handler.w_handler.join_queue()
+                t_handler.thread_handler.requester_queue('enc', args.pull_data)
+                t_handler.thread_handler.requester_queue('dec', args.pull_data)
+                t_handler.thread_handler.requester_queue('xml', args.pull_data)
+                t_handler.thread_handler.join_queue()
                 
         # Set sub_database after concatenating everything into a single title_database
         sub_database = t_handler.title_database
+        if not sub_database: self.log.add(AppText().no_database_found, err=-1); SystemExit(0)
         # Modify sub_database through filter
         if args.filter:
             import difflib
             filters = [filter.upper() for filter in args.filter.split(',')]
             self.log.add("Filtering for %s" % filters) ##FIXIT
-            if not sub_database: self.log.add(AppText().no_database_found, err=-1)
             sub_filter = args.filter[:].split(',')
             if 'decrypted' in filters: sub_filter.remove('decrypted');
             if 'encrypted' in filters: sub_filter.remove('encrypted');
@@ -702,12 +748,10 @@ class CliName:
         # Export <title_id>.tik
         if args.ticket_out:
             if args.title_id:
-                sub_database = {args.title_id: t_handler.title_database[args.title_id]}
-                t_handler.write_bin(overwrite=args.overwrite, database=sub_database, out_dir=args.output_dir, title_id=args.title_id, file_out='%s.tik' % args.title_id, type='tik')
+                t_handler.thread_handler.requester_queue('tik', [args.title_id, sub_database, args.output_dir, args.title_id, args.overwrite])
             else:
                 for tid in sub_database:
-                    super_sub_database = {tid: t_handler.title_database[tid]}
-                    t_handler.write_bin(overwrite=args.overwrite, database=super_sub_database, out_dir=args.output_dir, title_id=tid, type='tik')
+                    t_handler.thread_handler.requester_queue('tik', [tid, sub_database, args.output_dir, args.title_id, args.overwrite])
         
         # Print out database
         if args.print_format:
@@ -781,7 +825,7 @@ class CliName:
                     print((format_string.format(title_name, title_id, dec_key, enc_key, crypto_seed, region, size, type, serial, publisher, common_key)).encode('utf-8'))
         if not args.verbose:
             self.log.print_err()
-
+        t_handler.thread_handler.join_queue()
 
 #====================#
 # Frontend UI Logic  #
@@ -795,23 +839,80 @@ class AppName(Tk):
         icon_base64 ="""R0lGODlhIAAgAOfYAKYAAKcAAKgAAKUBAakAAKoAAKsAAKgBAawAAK0AAK4AAKwBAa0BAa4BAa0C\nAq4DA64EBK4FBa8ICKwMDLALC60MDLEQD7IRELETE7IUFLMUFLIWFrMWFrMYF7QYGLQZGbUZGbYb\nG7UcHLYeHbYfH7YhILciIrUlJbYlJbcnJrgoJ7krKrksK7otLbouLbsxMbsyMbo0NLk1NL05OL47\nOlZXV748O1dYV7o+PcBCQbtEQ71EQ75EQ79EQ8BEQ8BERMFGRcJKSWJkY8JKSmNkZL5MS8NNTMNO\nTcRPTsRQT8RRUMVUU8VVVMdaWchdXMVfXshfXsViYcZiYcdiYchiYcliYcZjYsdjYcdjYshjYslj\nYcljYspjYcpjYspkY8tpZ8tracxsa8xubc1ubcl2ds51c891c892ddB5d8+BgNCBgNGBgNKBgNKC\ngNaBgdSGhdSJh9SJiNOLitWLitSMi9WMitWMi9aMi9ONjdWNi9aNi9eNi9eOi9mOi9iQjtiUktiW\nlNmYltmamNmbmdqcmq6urNyjodimpbGxrtmnp9iop9mop9qop9uoqN2optqpqNqpqdupqNupqdyp\nqNypqduqqdyqqdyqqt2qqd6qqN2rqd6rqd6rqt+rqd+rqt6sqd6sqt+squCsqt+tqeCtqt2urLq6\nuOCwrru7ueCysNO3ttS4uOG1stO5udW5uNW5uda5uNa6uNa6ude6uNe6ucPAv9e7udi7ueK5ttm8\nueK6t9e9usXCwNq9uePCweXDwebGxObHxNnPzdrPzOnQzufS0erU0erW0+vZ1uza1+3f3O7i4O7j\n4O/k4e/n5PDn5PHr6PHt6vHu6/Lv7PLw7fLw7vLx7vPy7///////////////////////////////\n////////////////////////////////////////////////////////////////////////////\n/////////////////////////////////////////////////////yH5BAEKAP8ALAAAAAAgACAA\nAAj+AP8JHEiwoMGDBlH98sOHD508dujs2WOnDh07dvrokaMH4508evD4MjUQERoFCRIoICCAgIEE\nCGIiMFAAAcyZBmQiIECmkEBjCxpAYbNGTRo1bdi0abOmKdKlS5u2UfNkwIFiAi8hMHKtq9evzaqU\ncALtq9kiAioJZGSgi9mvyl6kTGDj2NuuUQhEWksgy91r1jZ1mJugRbC31qToXVsAy19kySzMlZBA\nBbO3UwgsEjipr7W7y541mTsiRIIgn79mfiSQUl9qfzNFIJzSgzSzUwQoEhipQBbYbw09MDH3iyNi\n094q3vwvEQEsyd8SQuAmpYrUd/Pu/ffJN3CzzCD+gEhp5i9eAKAEdkrg9u+SuWHMX5uCIP0/Twm2\n/E11YS4L7G9RkQAnAnGiQHtmVQMDbYOYpxiB/4iCAIJm/ZJBAgwk4MAP35mlhQGhCBRKfuaVgUAc\nW8nHRQIh/kMJAvr9BQgEznBQhXwfYiJQIwBYYV4gIlwDhBfyZbZdJAI49tcZK1wDRg7yKQZJa32Z\nB4UL18xBQTQOEmAJZ8+Zx8QM1+iCADBdSsJZkuYpkcQ10WhgiHlGCiRJAD7+hcQYXUEBh3lUGKCJ\nQKOw+dcRb3T1hxiAGkCKQKQIcIV5PwTSFStD0InAo/+UEoAMt701DQmCdIXLBwB6JU0MCJwi0DBs\nExRwAg898ODDrT3QgMAGO/CQAgI46NArD8T2gEIBFQgjEBGHYFBAAQQEIIABOSVgAEsFUEsAAAR0\nSwC0BWDAiBAD3cDLLr3kosoqrrxiyy2zzOKKK7fkAksssdAiyyuyyNJKLTUgJPDABwUEADs="""
         img = PhotoImage(data=icon_base64)
         self.call('wm', 'iconphoto', self._w, img)
-        self.geometry('300x150')
         self.createWidgets()
 
     def createWidgets(self):
-        self.quit_button = ttk.Button(self, text=u'Quit', command=self.quit)
-        self.quit_button.pack()
+        #self.quit_button = ttk.Button(self, text=u'Quit', command=self.quit)
+        #self.quit_button.pack()
         #self.color_picker = ttk.Button(self, text=color, command=self.btn_load_ticketdb)
         #self.color_picker.pack()
-        messagebox.showerror(AppText().not_implemented_yet.split(':')[0], AppText().not_implemented_yet % 'GUI mode')
-        self.quit()
+        #messagebox.showerror(AppText().not_implemented_yet.split(':')[0], AppText().not_implemented_yet % 'GUI mode')
+        #self.quit()
+
+        self.frame = Frame(self)
+        self.notebook = Notebook(self.frame)
         
-    def btn_load_ticketdb(self):
-        error, result = t_handler.load_bin('ticket.db')
-        if error:
-            messagebox.showerror(result.split(':')[0], result)
-        else:
-            messagebox.showinfo('Success', result)
+        frame_title_database = Frame(self.notebook, width=500, height=400)
+        frame_credits_page = Frame(self.notebook, width=500, height=400)
+        self.notebook.add(frame_title_database, text='Title Database')
+        self.notebook.add(frame_credits_page, text='Credits')
+        
+        self.ctree = self.column_treeview(frame_title_database)
+        
+        self.frame.grid(row=0, column=0, sticky=(N,S,E,W))
+        self.notebook.grid(row=0, column=0, sticky=(N,S,E,W))
+        
+        
+        self.menu = Menu(self, tearoff=0)
+        self.menu.add_command(label='Check decrypted title key', command=self.hello)
+        self.menu.add_command(label='Save decrypted title key', command=self.hello)
+        self.menu.add_command(label='Save encrypted title key', command=self.hello)
+        self.menu.add_command(label='Save crypto seed', command=self.hello)
+        def context_menu(event):
+            try:
+                self.tree_entry_selection = self.ctree.selection()
+                self.menu.post(event.x_root, event.y_root)
+            except Exception as e:
+                print(e)
+        self.ctree.bind("<Button-3>", context_menu)
+        
+        
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+        self.frame.columnconfigure(0, weight=2)
+        self.frame.rowconfigure(0, weight=2)
+        mainloop()
+        
+    def hello(self):
+        for item in self.tree_entry_selection:
+            entry = self.ctree.set(item)
+            print(entry['Title ID'])
+    def column_treeview(self, parent):
+        columns = ('Title Name', 'Region', 'Size', 'Serial', 'Type', 'Publisher', 'Title ID', 'Console ID')
+        self.ctree = Treeview(parent, columns=columns, show="headings")
+        #self.ctree.configure(font='TkFixedFont')
+        self.ctree.column('Title Name', width=150)
+        self.ctree.column('Region', width=50)
+        self.ctree.column('Size', width=40)
+        self.ctree.column('Serial', width=75)
+        self.ctree.column('Type', width=90)
+        self.ctree.column('Publisher', width=90)
+        self.ctree.column('Title ID', width=110)
+        self.ctree.column('Console ID', width=70)
+        for col in columns:
+            self.ctree.heading(col, text=col)
+        self.rebuild_treeview(self.ctree)
+        self.ctree.pack(fill=BOTH, expand=1)
+        return self.ctree
+    def rebuild_treeview(self, treeview):
+        treeview.delete(*treeview.get_children())
+        for title_id in t_handler.title_database:
+            e = t_handler.title_database[title_id]
+            tid_index = AppText().extended_tid_index()
+            try:
+                type = tid_index[e['type']]
+            except: type = e['type']
+            treeview.insert('','end', values=[e['title_name'], e['region'], e['image_size'], e['serial'], type, e['publisher'], e['title_id']])
 
 
 #====================#
@@ -832,7 +933,11 @@ class logging_handler:
         self.add([0, 'Initializing log...'])
     def add(self, entry, err=0):
         self.log.append([err, entry])
-        if self.verbose: print(entry)
+        if self.verbose: 
+            try:
+                print(entry)
+            except:
+                print(entry.encode('utf-8'))
         return
     def print_err(self):
         for entry in self.log:

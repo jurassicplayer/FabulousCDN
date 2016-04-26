@@ -74,13 +74,16 @@ def pmkdir(path):
 
 class App:
     def __init__(self):
+        ## Configure
+        self.threads_limit = 200
+        
         ## Program Dialogue
         self.program_title        = u'[FabulousCDN]'
         self.force_gui_mode       = u'Forcing GUI mode, dropping all other arguments.'
         # Local dialogue
         self.invalid_title_id     = u'Invalid Title Id: %s'
         self.invalid_title_key    = u'Invalid Title Key: %s'
-        self.invalid_crypto  = u'Invalid Crypto Seed: %s'
+        self.invalid_crypto       = u'Invalid Crypto Seed: %s'
         self.invalid_console_id   = u'Invalid Console Id: %s'
         self.file_not_found       = u'File not found: %s doesn\'t exist.'
         self.no_database_found    = u'No entries in defined database.'
@@ -100,7 +103,7 @@ class App:
         self.h_fmt_title_id       = u'Title ID'
         self.h_fmt_dec_key        = u'Decrypted Key'
         self.h_fmt_enc_key        = u'Encrypted Key'
-        self.h_fmt_crypto    = u'Crypto Seed'
+        self.h_fmt_crypto         = u'Crypto Seed'
         self.h_fmt_region         = u'Region'
         self.h_fmt_size           = u'Size'
         self.h_fmt_type           = u'Type'
@@ -108,7 +111,7 @@ class App:
         self.h_fmt_publisher      = u'Publisher'
         self.h_fmt_console_id     = u'ConsoleID'
         # Thread dialogue
-        self.added_to_queue       = u'Request %s added to queue.'
+        self.added_to_queue       = u'Request %s added to %s queue.'
         # Rom type
         self.sys_app              = u'Sys App'
         self.sys_data_archive     = u'Sys Data Archive'
@@ -157,7 +160,7 @@ class App:
         self.lock = threading.Lock()
 
 
-    def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, serial=None, image_crc=None, file_name=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, decrypted_title_key=None, encrypted_title_key=None, crypto=None, console_id='00000000'):
+    def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, serial=None, image_crc=None, file_name=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, decrypted_title_key=None, encrypted_title_key=None, crypto=None, console_id='00000000', common_key='00000000'):
         entry_template = {
                 'database_index' : database_index,    #Useless metadata
                 'title_name'     : title_name,
@@ -173,12 +176,13 @@ class App:
                 'release_name'   : release_name,      #Useless metadata
                 'trimmed_size'   : trimmed_size,      #Useless metadata
                 'firmware'       : firmware,          #Useless metadata
-                'type'           : title_id[:][:8], ##Drop 3dsdb typing for tid_high typing
+                'type'           : title_id[:8],      ##Drop 3dsdb typing for tid_high typing
                 'card'           : card,              #Useless metadata
                 'dec_key'        : decrypted_title_key,
                 'enc_key'        : encrypted_title_key,
                 'crypto'         : crypto,
-                'console_id'     : console_id
+                'console_id'     : console_id,
+                'common_key'     : common_key
                 }
         # All caps certain entries
         capitalize = ['title_id', 'dec_key', 'enc_key', 'crypto', 'console_id', 'region', 'language', 'image_size', 'serial', 'image_crc', 'trimmed_size', 'type', 'card']
@@ -187,7 +191,7 @@ class App:
             if not entry_template[info] and title_id in self.title_database: entry_template[info] = self.title_database[title_id][info]
             if entry_template[info] and info in capitalize: entry_template[info] = entry_template[info].upper()
         with self.lock:
-            self.title_database.update({title_id: entry_template})
+            self.title_database.update({title_id.upper(): entry_template})
 
     def replace_string(self, format_string, limit_length=True):
         replacement_strings = [
@@ -207,7 +211,7 @@ class App:
             if limit_length:
                 format_string = format_string.replace(string[0], '{{{0}: ^{1}.{1}}}'.format(i, string[1]))
             else:
-                format_string = format_string.replace(string[0], '{{0}}'.format(i))
+                format_string = format_string.replace(string[0], '{{{0}}}'.format(i))
         return format_string
 
     #####-----     http://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console     -----#####
@@ -241,7 +245,7 @@ class web_handler:
     '''def pull_title_metadata(self, title_id):
         self.log.add(self.app.not_implemented_yet % 'pull title metadata', err=-1)  ##FIXIT'''
     def request_url(self, url):
-        n_of_attempts = 3
+        n_of_attempts = 1
         for attempt in range(n_of_attempts):
             try:
                 if(attempt < n_of_attempts):
@@ -264,20 +268,64 @@ class local_handler:
         self.app.log('Local handler initialized.')
         self.ticket_template = '00010004d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d434130303030303030332d585330303030303030630000000000000000000000000000000000000000000000000000000000000000000000000000feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface010000CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC00000000000000000000000000AAAAAAAAAAAAAAAA00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010014000000ac000000140001001400000000000000280000000100000084000000840003000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
         self.ticket_magic    = '00010004919ebe464ad0f552cd1b72e7884910cf55a9f02e50789641d896683dc005bd0aea87079d8ac284c675065f74c8bf37c88044409502a022980bb8ad48383f6d28a79de39626ccb2b22a0f19e41032f094b39ff0133146dec8f6c1a9d55cd28d9e1c47b3d11f4f5426c2c780135a2775d3ca679bc7e834f0e0fb58e68860a71330fc95791793c8fba935a7a6908f229dee2a0ca6b9b23b12d495a6fe19d0d72648216878605a66538dbf376899905d3445fc5c727a0e13e0e2c8971c9cfa6c60678875732a4e75523d2f562f12aabd1573bf06c94054aefa81a71417af9a4a066d0ffc5ad64bab28b1ff60661f4437d49e1e0d9412eb4bcacf4cfd6a3408847982000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d43413030303030303033000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000158533030303030303063000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000137a0894ad505bb6c67e2e5bdd6a3bec43d910c772e9cc290da58588b77dcc11680bb3e29f4eabbb26e98c2601985c041bb14378e689181aad770568e928a2b98167ee3e10d072beef1fa22fa2aa3e13f11e1836a92a4281ef70aaf4e462998221c6fbb9bdd017e6ac590494e9cea9859ceb2d2a4c1766f2c33912c58f14a803e36fccdcccdc13fd7ae77c7a78d997e6acc35557e0d3e9eb64b43c92f4c50d67a602deb391b06661cd32880bd64912af1cbcb7162a06f02565d3b0ece4fcecddae8a4934db8ee67f3017986221155d131c6c3f09ab1945c206ac70c942b36f49a1183bcd78b6e4b47c6c5cac0f8d62f897c6953dd12f28b70c5b7df751819a9834652625000100010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010003704138efbbbda16a987dd901326d1c9459484c88a2861b91a312587ae70ef6237ec50e1032dc39dde89a96a8e859d76a98a6e7e36a0cfe352ca893058234ff833fcb3b03811e9f0dc0d9a52f8045b4b2f9411b67a51c44b5ef8ce77bd6d56ba75734a1856de6d4bed6d3a242c7c8791b3422375e5c779abf072f7695efa0f75bcb83789fc30e3fe4cc8392207840638949c7f688565f649b74d63d8d58ffadda571e9554426b1318fc468983d4c8a5628b06b6fc5d507c13e7a18ac1511eb6d62ea5448f83501447a9afb3ecc2903c9dd52f922ac9acdbef58c6021848d96e208732d3d1d9d9ea440d91621c7a99db8843c59c1f2e2c7d9b577d512c166d6f7e1aad4a774a37447e78fe2021e14a95d112a068ada019f463c7a55685aabb6888b9246483d18b9c806f474918331782344a4b8531334b26303263d9d2eb4f4bb99602b352f6ae4046c69a5e7e8e4a18ef9bc0a2ded61310417012fd824cc116cfb7c4c1f7ec7177a17446cbde96f3edd88fcd052f0b888a45fdaf2b631354f40d16e5fa9c2c4eda98e798d15e6046dc5363f3096b2c607a9d8dd55b1502a6ac7d3cc8d8c575998e7d796910c804c495235057e91ecd2637c9c1845151ac6b9a0490ae3ec6f47740a0db0ba36d075956cee7354ea3e9a4f2720b26550c7d394324bc0cb7e9317d8a8661f42191ff10b08256ce3fd25b745e5194906b4d61cb4c2e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f7400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001434130303030303030330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007be8ef6cb279c9e2eee121c6eaf44ff639f88f078b4b77ed9f9560b0358281b50e55ab721115a177703c7a30fe3ae9ef1c60bc1d974676b23a68cc04b198525bc968f11de2db50e4d9e7f071e562dae2092233e9d363f61dd7c19ff3a4a91e8f6553d471dd7b84b9f1b8ce7335f0f5540563a1eab83963e09be901011f99546361287020e9cc0dab487f140d6626a1836d27111f2068de4772149151cf69c61ba60ef9d949a0f71f5499f2d39ad28c7005348293c431ffbd33f6bca60dc7195ea2bcc56d200baf6d06d09c41db8de9c720154ca4832b69c08c69cd3b073a0063602f462d338061a5ea6c915cd5623579c3eb64ce44ef586d14baaa8834019b3eebeed3790001000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        self.offset          = 0x140
         # Read and write binary files. Write should never be called from any frontend
-    def write_bin(self, type, database):
+    def write_bin(self, type, database, secondary=None):
+        n_entries=0
+        data=''
         if type == 'write_decrypted':
-            pass
+            for title_id in database:
+                if not database[title_id]['dec_key']:
+                    self.app.log('Skipping %s, missing decrypted key.' % title_id ,err=-1); continue  ##FIXIT
+                else:
+                    dec_key = database[title_id]['dec_key']
+                reserved = ''.rjust(8, 'F')
+                common_key = database[title_id]['common_key']
+                data += '{}{}{}{}'.format(common_key, reserved, title_id, dec_key)
+                n_entries += 1
+            header = '{0}{0}{0}{1}'.format(reserved, hex(n_entries).split('x')[1].zfill(8))
+            header = ''.join(reversed([header[i:i+2] for i in range(0, len(header), 2)]))
+            data = '{}{}'.format(header, data)
         if type == 'write_encrypted':
-            pass
+            for title_id in database:
+                if not database[title_id]['enc_key']:
+                    self.app.log('Skipping %s, missing encrypted key.' % title_id ,err=-1); continue  ##FIXIT
+                else:
+                    enc_key = database[title_id]['enc_key']
+                reserved = ''.rjust(8, 'F')
+                common_key = database[title_id]['common_key']
+                data += '{}{}{}{}'.format(common_key, reserved, title_id, enc_key)
+                n_entries += 1
+            header = '{0}{0}{0}{1}'.format(reserved, hex(n_entries).split('x')[1].zfill(8))
+            header = ''.join(reversed([header[i:i+2] for i in range(0, len(header), 2)]))
+            data = '{}{}'.format(header, data)
         if type == 'write_crypto':
-            pass
-        if type == 'write_ticket':
-            pass
+            for title in database:
+                if not database[title_id]['crypto']:
+                    self.log.add('Skipping %s, missing crypto seed.' % title_id ,err=-1); continue  ##FIXIT
+                else:
+                    crypto = database[title_id]['crypto']
+                reserved  = ''.rjust(8, '0')
+                # Reverse title_id
+                rev_title_id = ''.join(reversed([title_id[i:i+2] for i in range(0, len(title_id), 2)]))
+                data += '{1}{2}{0}{0}'.format(reserved, rev_title_id, crypto)
+                n_entries += 1
+            header = '{0}{0}{0}{1}'.format(reserved, hex(n_entries).split('x')[1].zfill(8))
+            header = ''.join(reversed([header[i:i+2] for i in range(0, len(header), 2)]))
+            data = '{}{}'.format(header, data)
         if type == 'write_xml':
             pass
         if type == 'write_csv':
             pass
+        if type == 'write_ticket':
+            ticket_template = bytearray.fromhex(self.ticket_template)
+            try:
+                ticket_template[self.offset+0x9C:self.offset+0xA4] = bytearray.fromhex(secondary.upper()[:16])[0x0:0x8]
+            except Exception as e:
+                print('Exception (%s): %s' % (secondary, e))
+            #print(binascii.hexlify(ticket_template[self.offset+0x9C:self.offset+0xA4]))
+        if not n_entries: data = None
+        return data
     def read_bin(self, type, data):
         # parses bytes into title database
         # This could be "simplified" into a more complex looking if statement with less repetitive code, but w/e #Clarity
@@ -287,21 +335,23 @@ class local_handler:
             n_entries = len(data.read()) / 32
             data.seek(16, os.SEEK_SET)
             for i in range(int(n_entries)):
-                #c_id = binascii.hexlify(data.read(4)).decode('utf-8')
-                data.seek(8, os.SEEK_CUR)
+                common_key = binascii.hexlify(data.read(4)).decode('utf-8')
+                data.seek(4, os.SEEK_CUR)
                 self.app.add_entry(
                     title_id = binascii.hexlify(data.read(8)).decode('utf-8'),
-                    decrypted_title_key = binascii.hexlify(data.read(16)).decode('utf-8')
+                    decrypted_title_key = binascii.hexlify(data.read(16)).decode('utf-8'),
+                    common_key = common_key
                     )
         if type.split('_')[1] == 'encrypted':
             n_entries = len(data.read()) / 32
             data.seek(16, os.SEEK_SET)
             for i in range(int(n_entries)):
-                #c_id = binascii.hexlify(data.read(4)).decode('utf-8')
-                data.seek(8, os.SEEK_CUR)
+                common_key = binascii.hexlify(data.read(4)).decode('utf-8')
+                data.seek(4, os.SEEK_CUR)
                 self.app.add_entry(
                     title_id = binascii.hexlify(data.read(8)).decode('utf-8'),
-                    encrypted_title_key = binascii.hexlify(data.read(16)).decode('utf-8')
+                    encrypted_title_key = binascii.hexlify(data.read(16)).decode('utf-8'),
+                    common_key = common_key
                     )
         if type.split('_')[1] == 'crypto':
             n_entries = len(data.read()) / 32
@@ -314,7 +364,7 @@ class local_handler:
                 data.seek(8, os.SEEK_CUR)
                 
         if type.split('_')[1] == 'ticket':
-            offset = 0x140
+            offset = self.offset
             ticket = data.read()
             ticket = bytearray(ticket)
             n_entries = 1
@@ -338,7 +388,7 @@ class local_handler:
                 self.app.add_entry(
                     title_id = binascii.hexlify(tickets[offset+0x9C:offset+0xA4]).decode('utf-8'),
                     encrypted_title_key = binascii.hexlify(tickets[offset+0x7F:offset+0x8F]).decode('utf-8'),
-                    console_id = binascii.hexlify(tickets[offset+0x98:offset+0x9C]console_id).decode('utf-8')
+                    console_id = binascii.hexlify(tickets[offset+0x98:offset+0x9C]).decode('utf-8')
                     )
         if type.split('_')[1] == 'xml':
             tree = ET.ElementTree(file=data)
@@ -346,7 +396,9 @@ class local_handler:
             n_entries = len(root)
             for i in range(n_entries):
                 e=root[i]
+                title_id = None
                 if root.tag == 'database':
+                    if not e[3].text: continue
                     self.app.add_entry(
                         title_name = e[0].text,
                         region = e[1].text,
@@ -354,8 +406,9 @@ class local_handler:
                         title_id = e[3].text
                         )
                 elif root.tag == 'releases':
+                    if not e[8].text or not len(e[8].text) == 16: continue
                     self.app.add_entry(
-                        title_id = e[8].text,
+                        title_id = e[8].text[:16],
                         database_index = e[0].text,
                         title_name = e[1].text,
                         publisher = e[2].text,
@@ -379,7 +432,7 @@ class local_handler:
             n_entries = len(re.findall(pattern, csv_file))
             for (title_name, title_id, enc_key, region, serial, publisher, ver_num, size) in re.findall(pattern,csv_file):
                 self.app.add_entry(title_id, title_name=title_name[2:], encrypted_title_key=enc_key, region=region, serial=serial, publisher=publisher, image_size=size)
-        return n_entries
+        return self.app.title_database
     def load_file(self, type, path):
         # loads file into memory and passes back bytes
         if not os.path.isfile(path):
@@ -405,89 +458,106 @@ class thread_handler:
         self.write_queue = queue.Queue()
         self.main_thread = threading.currentThread()
         self.queue_data = []
+        ## Different threading method
+        for i in range(self.app.threads_limit):
+            thread_handle = threading.Thread(target=self.worker_thread)
+            thread_handle.start()
+        self.writer_handle = threading.Thread(target=self.writer_thread, name='Thread-Writer')
+        self.writer_handle.start()
     def worker_thread(self):
-        # Parses user requests and passes requests to the writer_queue
-        a, queue_data = self.request_queue.get()
-        type, data = (a['type'][:], a['data'])
-        if type == 'pull_decrypted': 
-            data = self.app.w.request_url('http://3ds.nfshost.com/download')
-        if type == 'pull_encrypted': 
-            data = self.app.w.request_url('http://3ds.nfshost.com/downloadenc')
-        if type == 'pull_xml':
-            if a['secondary'] == 'type_3dsdb':
-                data = self.app.w.request_url('http://3dsdb.com/xml.php')
-            elif a['secondary'] == 'type_groovycia':
-                data = self.app.w.request_url('http://ptrk25.github.io/GroovyFX/database/community.xml')
-        if type == 'pull_metadata': data = 0
-        if type in ['pull_decrypted', 'pull_encrypted', 'pull_xml']:
-            type = 'load_%s' % type.split('_')[1]
-        # pass on a[type] and data, if a[type] pull_, then read_bin. if a[type] load_, then load_file
-        if type == 'load_decrypted':
-            if a['type'] == 'load_decrypted': data = self.app.l.load_file(a['type'], a['file_in'])
-            data = self.app.l.read_bin(a['type'], data)
-        if type == 'load_encrypted':
-            if a['type'] == 'load_encrypted': data = self.app.l.load_file(a['type'], a['file_in'])
-            data = self.app.l.read_bin(a['type'], data)
-        if type == 'load_crypto':
-            data = self.app.l.load_file(a['type'], a['file_in'])
-            data = self.app.l.read_bin(a['type'], data)
-        if type == 'load_ticket': 
-            data = self.app.l.load_file(a['type'], a['file_in'])
-            data = self.app.l.read_bin(a['type'], data)
-        if type == 'load_ticketdb': 
-            data = self.app.l.load_file(a['type'], a['file_in'])
-            data = self.app.l.read_bin(a['type'], data)
-        if type == 'load_xml': 
-            if a['type'] == 'load_xml': data = self.app.l.load_file(a['type'], a['file_in'])
-            data = self.app.l.read_bin(a['type'], data)
-        if type == 'load_csv': 
-            data = self.app.l.load_file(a['type'], a['file_in'])
-            data = self.app.l.read_bin(a['type'], data)
-        if a['type'] in ['pull_decrypted', 'pull_encrypted', 'pull_xml']:
-            if not a['temporary']: type = 'write_%s' % type.split('_')[1]
-        # pass on type and data, if a[type] pull_ and a[temporary] not set, write to default
-        if type in ['pull_tmd', 'write_ticket']: data = self.app.w.request_url('http://ccs.cdn.c.shop.nintendowifi.net/ccs/download/%s/tmd' % a['title_id'])
-        if type == 'write_decrypted': data = 0
-        if type == 'write_encrypted': data = 0
-        if type == 'write_crypto': data = 0
-        if type == 'write_ticket': data = 0
-        if type == 'write_xml':
-            if a['secondary'] == 'type_3dsdb':
-                data = 0
-            elif a['secondary'] == 'type_groovycia':
-                data = 0
-        if type == 'write_csv': data = 0
-        a.update({'data': data})
-        queue_data.append(a)
-        self.request_queue.task_done()
+        while True:
+            # Parses user requests and passes requests to the writer_queue
+            a, queue_data = self.request_queue.get()
+            type, data = (a['type'][:], a['data'])
+            if type == 'pull_decrypted': 
+                data = self.app.w.request_url('http://3ds.nfshost.com/download') #Returns binary
+            if type == 'pull_encrypted': 
+                data = self.app.w.request_url('http://3ds.nfshost.com/downloadenc') #Returns binary
+            if type == 'pull_xml':
+                if a['secondary'] == 'type_3dsdb':
+                    data = self.app.w.request_url('http://3dsdb.com/xml.php') #Returns binary
+                elif a['secondary'] == 'type_groovycia':
+                    data = self.app.w.request_url('http://ptrk25.github.io/GroovyFX/database/community.xml') #Returns binary
+            if type == 'pull_metadata': data = 0  ##FIXIT
+            if type in ['pull_decrypted', 'pull_encrypted', 'pull_xml']:
+                type = 'load_%s' % type.split('_')[1]
+            # pass on a[type] and data, if a[type] pull_, then read_bin. if a[type] load_, then load_file
+            if type == 'load_decrypted':
+                if a['type'] == 'load_decrypted': data = self.app.l.load_file(a['type'], a['file_in'])
+                data = self.app.l.read_bin(a['type'], data) #Returns title_database
+            if type == 'load_encrypted':
+                if a['type'] == 'load_encrypted': data = self.app.l.load_file(a['type'], a['file_in'])
+                data = self.app.l.read_bin(a['type'], data) #Returns title_database
+            if type == 'load_crypto':
+                data = self.app.l.load_file(a['type'], a['file_in'])
+                data = self.app.l.read_bin(a['type'], data) #Returns title_database
+            if type == 'load_ticket': 
+                data = self.app.l.load_file(a['type'], a['file_in'])
+                data = self.app.l.read_bin(a['type'], data) #Returns title_database
+            if type == 'load_ticketdb': 
+                data = self.app.l.load_file(a['type'], a['file_in'])
+                data = self.app.l.read_bin(a['type'], data) #Returns title_database
+            if type == 'load_xml':
+                if a['type'] == 'load_xml': data = self.app.l.load_file(a['type'], a['file_in'])
+                data = self.app.l.read_bin(a['type'], data) #Returns title_database
+            if type == 'load_csv': 
+                data = self.app.l.load_file(a['type'], a['file_in'])
+                data = self.app.l.read_bin(a['type'], data) #Returns title_database
+            if a['type'] in ['pull_decrypted', 'pull_encrypted', 'pull_xml']:
+                if not a['temporary']: type = 'write_%s' % type.split('_')[1]
+            # pass on type and data, if a[type] pull_ and a[temporary] not set, write to default
+            if type in ['pull_tmd', 'write_ticket']: data = self.app.w.request_url('http://ccs.cdn.c.shop.nintendowifi.net/ccs/download/%s/tmd' % a['title_id'])
+            if type == 'write_ticket':
+                data = self.app.l.write_bin(a['type'], data, secondary=a['title_id'])   #Data should be tmd
+                data = self.writer_queue(a, data)
+            if type == 'write_decrypted':
+                data = self.app.l.write_bin(a['type'], data)  #Data should be database
+                data = self.writer_queue(a, data)
+            if type == 'write_encrypted':
+                data = self.app.l.write_bin(a['type'], data)  #Data should be database
+                data = self.writer_queue(a, data)
+            if type == 'write_crypto':
+                data = self.app.l.write_bin(a['type'], data)  #Data should be database
+                data = self.writer_queue(a, data)
+            if type == 'write_xml':
+                data = self.app.l.write_bin(a['type'], data, secondary=a['secondary'])  #Data should be database
+                data = self.writer_queue(a, data)
+            if type == 'write_csv':
+                data = self.app.l.write_bin(a['type'], data)  #Data should be database
+                data = self.writer_queue(a, data)
+            a.update({'data': data})
+            queue_data.append(a)
+            self.request_queue.task_done()
+            if type == 'end_queue': break
         return
     def writer_thread(self):
-        # Writes all incoming data to file
-        a, queue_data = self.write_queue.get()
-        output = ''
-        if a['output_dir']: output += '%s/' % a['output_dir']
-        if a['file_out']: output += '%s' % a['file_out']
-        type = a['type']
-        if type == 'write_decrypted': output += 'decTitleKeys.bin'
-        elif type == 'write_encrypted': output += 'encTitleKeys.bin'
-        elif type == 'write_crypto': output += 'seeddb.bin'
-        elif type == 'write_ticket': output += '%s.tik' % a['title_id']
-        elif type == 'write_xml': output += '3dsreleases.xml'
-        elif type == 'write_csv': output += 'titles.csv'
-        # User-defined string
-        if a['title_id']:
-            b = self.app.title_database[a['title_id']].copy()
-            for key in b:
-                if not b[key]: b[key] = 'unk'
-            format_string = self.app.replace_string(output, limit_length=False)
-            format_string.format(b['title_name'], b['title_id'], b['dec_key'], b['enc_key'], b['crypto'], b['console_id'], b['region'], b['size'], b['type'], b['serial'], b['publisher'])
-        if not a['overwrite'] and os.path.isfile(output): return self.app.log(self.app.failed_overwrite % output, err=-1) ## FIXIT
-        #pmkdir(output.rsplit(os.sep, 1))    ##Commented out write to file temporarily (for testing purposes)
-        #with open(output, 'wb') as file_handler:
-        #    file_handler.write(a['data'])
-        #    file_handler.close()
-        self.app.log('Write request completed: %s' % output) ##FIXIT
-        self.write_queue.task_done()
+        while True:
+            # Writes all incoming data to file
+            type, output_dir, file_out, title_id, secondary, overwrite, data = self.write_queue.get()  #### FIXIT
+            output = ''
+            if output_dir: output += '%s/' % output_dir
+            if file_out: output += file_out
+            elif type == 'write_decrypted': output += 'decTitleKeys.bin'
+            elif type == 'write_encrypted': output += 'encTitleKeys.bin'
+            elif type == 'write_crypto': output += 'seeddb.bin'
+            elif type == 'write_ticket': output += '%s.tik' % title_id
+            elif type == 'write_xml': output += '3dsreleases.xml'
+            elif type == 'write_csv': output += 'titles.csv'
+            # User-defined string
+            if title_id:
+                b = self.app.title_database[title_id].copy()
+                for key in b:
+                    if not b[key]: b[key] = key
+                output = self.app.replace_string(output, limit_length=False)
+                output = output.format(b['title_name'], b['title_id'], b['dec_key'], b['enc_key'], b['crypto'], b['console_id'], b['region'], b['image_size'], b['type'], b['serial'], b['publisher'])
+            if not overwrite and os.path.isfile(output): return self.app.log(self.app.failed_overwrite % output, err=-1) ## FIXIT
+            '''pmkdir(output.rsplit(os.sep, 1))    ##Commented out write to file temporarily (for testing purposes)
+            with open(output, 'wb') as file_handler:
+                file_handler.write(data)
+                file_handler.close()'''
+            self.app.log('Write request completed: %s' % output) ##FIXIT
+            self.write_queue.task_done()
+            if type == 'end_queue': break
         return
     def requester_queue(self, title_id=None, key=None, type=None, secondary=None, file_in=None, output_dir=None, file_out=None, data=None, overwrite=False, tmp=False):
         # Adds a new user request to the queue
@@ -504,39 +574,46 @@ class thread_handler:
             'temporary': tmp
             }
         self.request_queue.put((args, self.queue_data))
-        thread_handle = threading.Thread(target=self.worker_thread)
-        thread_handle.start()
-        self.app.log(self.app.added_to_queue % type)  ##FIXIT
-    def writer_queue(self, title_id=None, key=None, type=None, secondary=None, file_in=None, output_dir=None, file_out=None, data=None, overwrite=False, tmp=False):
+        #thread_handle = threading.Thread(target=self.worker_thread, args=(0, self.run_event))
+        #thread_handle.start()
+        self.app.log(self.app.added_to_queue % (type, 'request'))  ##FIXIT
+    def writer_queue(self, a, data):
         # Adds a new write request to the queue
-        args = {
-            'title_id': title_id,
-            'key': key,
-            'type': type,
-            'secondary': secondary,
-            'file_in': file_in,
-            'output_dir': output_dir,
-            'file_out': file_out,
-            'data': data,
-            'overwrite': overwrite,
-            'temporary': tmp
-            }
         # If the writer thread is active, wait for it to rejoin main thread
-        for thread in threading.enumerate():
-            if thread is self.writer_thread:
-                thread.join()
+        #if self.writer_handle:
         # Spawn new writer thread
-        self.write_queue.put((args, self.queue_data))
-        self.writer_handle = threading.Thread(target=self.writer_thread, name='Thread-Writer')
-        self.writer_handle.start()
-        self.app.log(self.app.added_to_queue % type)  ##FIXIT
-    def join_threads(self):
-        # Wait for queue to finish before continuing
+        self.write_queue.put((a['type'], a['output_dir'], a['file_out'], a['title_id'], a['secondary'], a['overwrite'], data))
+        #self.writer_handle = threading.Thread(target=self.writer_thread, name='Thread-Writer', args=(0, self.run_event))
+        #self.writer_handle.start()
+        self.app.log(self.app.added_to_queue % (a['type'], 'write'))  ##FIXIT
+    def end_queue(self):
+        args = {
+            'title_id': None,
+            'key': None,
+            'type': 'end_queue',
+            'secondary': None,
+            'file_in': None,
+            'output_dir': None,
+            'file_out': None,
+            'data': None,
+            'overwrite': None,
+            'temporary': None
+            }
+        # Send kill signal to all worker threads
+        for i in range(self.app.threads_limit):
+            self.request_queue.put((args, self.queue_data))
+        # Wait for all worker threads to finish up and rejoin the main thread
+        for thread in threading.enumerate():
+            if thread is self.main_thread or thread is self.writer_handle:
+                continue
+            thread.join()
+        # Send kill signal to writer thread
+        self.write_queue.put(('end_queue', None, None, None, None, None, None))
+        # Wait for writer thread to finish and rejoin the main thread
         for thread in threading.enumerate():
             if thread is self.main_thread:
                 continue
             thread.join()
-
 
 class CliFrontend:
     def __init__(self, App):
@@ -553,8 +630,8 @@ class CliFrontend:
         parser.add_argument('-tid', '--title_id',                   action='store',       dest='title_id',                                 help='Title ID of the content you want to download')
         parser.add_argument('-dk',  '--dec_key',                    action='store',       dest='dec_title_key',                            help='Add a decrypted title key for the Title ID')
         parser.add_argument('-ek',  '--enc_key',                    action='store',       dest='enc_title_key',                            help='Add an encrypted title key for the Title ID')
-        parser.add_argument('-cs',  '--crypto',                     action='store',       dest='crypto',                              help='Add a crypto seed for the Title ID')
-        parser.add_argument('-cid',  '--console_id',                action='store',       dest='console_id',                               help='Add a common key for the Title ID')
+        parser.add_argument('-cs',  '--crypto',                     action='store',       dest='crypto',                                   help='Add a crypto seed for the Title ID')
+        parser.add_argument('-cid', '--console_id',                 action='store',       dest='console_id',                               help='Add a console id for the Title ID.') # Change to console id for all titles
         parser.add_argument('-di',  '--decTitleKey_in',  nargs='?', action='store',       dest='decTitleKey_in',  const='decTitleKey.bin', help='Parses decTitleKey.bin formatted files for decrypted title keys')
         parser.add_argument('-ei',  '--encTitleKey_in',  nargs='?', action='store',       dest='encTitleKey_in',  const='encTitleKey.bin', help='Parses encTitleKey.bin formatted files for encrypted title keys')
         parser.add_argument('-si',  '--seeddb_in',       nargs='?', action='store',       dest='seeddb_in',       const='seeddb.bin',      help='Parses seeddb.bin for 9.6+ NCCH crypto keys')
@@ -564,7 +641,8 @@ class CliFrontend:
         parser.add_argument('-do',  '--decTitleKey_out', nargs='?', action='store',       dest='decTitleKey_out', const='decTitleKey.bin', help='Outputs concatenated inputs to decTitleKey.bin')
         parser.add_argument('-eo',  '--encTitleKey_out', nargs='?', action='store',       dest='encTitleKey_out', const='encTitleKey.bin', help='Outputs concatenated inputs to encTitleKey.bin')
         parser.add_argument('-so',  '--seeddb_out',      nargs='?', action='store',       dest='seeddb_out',      const='seeddb.bin',      help='Outputs concatenated inputs to seeddb.bin')
-        parser.add_argument('-to',  '--ticket_out',                 action='store_true',  dest='ticket_out',                               help='Outputs inputs to individual tickets <title_id>/<title_id>.tik')
+        ## xml out
+        parser.add_argument('-to',  '--ticket_out',      nargs='?', action='store',       dest='ticket_out',      const='%title_id.tik',   help='Outputs inputs to individual tickets <title_id>/<title_id>.tik')
         parser.add_argument('-fi',  '--filter',                     action='store',       dest='filter',                                   help='Filters output. Available input: USA, JPN, TWN, HKG, KOR, EUR, decrypted, encrypted, crypto, title, dlc, update, app, dlplay, demo, sysapp, sysapplet, sysmod, sysfirm, sysarc, twlsys, twlarc, <title_id>, <title_name>, <image_size>')
         parser.add_argument('-f',   '--force',                      action='store_true',  dest='overwrite',                                help='Force overwrite files')
         parser.add_argument('-o',   '--out_dir',         nargs='?', action='store',       dest='output_dir',      const='output',          help='Custom output directory to store output')
@@ -585,7 +663,7 @@ class CliFrontend:
         # Parse arguments (maybe add loading priority, ex. load xml after csv)
         if args.verbose:
             self.app.verbose = 1
-        # Single entry elements
+        # Loading data
         if args.title_id:
             if (len(args.title_id) is 16) and all(character in string.hexdigits for character in args.title_id):
                 self.app.add_entry(args.title_id)
@@ -611,7 +689,6 @@ class CliFrontend:
                     self.app.add_entry(args.title_id, console_id=args.console_id)
                 else:
                     self.app.log(self.app.invalid_console_id % args.console_id, err=-1)
-        # Multiple entry elements
         if args.decTitleKey_in:
             for file in args.decTitleKey_in.split(','):
                 self.app.t.requester_queue(type='load_decrypted', file_in=file)
@@ -646,15 +723,26 @@ class CliFrontend:
                 self.app.t.requester_queue(type='pull_xml', secondary='type_groovycia', tmp=temp)
                 self.app.t.requester_queue(type='pull_decrypted', tmp=temp)
                 self.app.t.requester_queue(type='pull_encrypted', tmp=temp)
-        
-        if args.ticket_in: self.app.t.requester_queue(type='load_ticket', file_in=args.ticket_in)
-        
-        
-        self.app.t.join_threads()
+
+        self.app.t.request_queue.join()
         sub_database = self.app.title_database.copy()
+        ## Filter ##FIXIT
+        
+        ## Write anything
+        if args.decTitleKey_out: self.app.t.requester_queue(type='write_decrypted', output_dir=args.output_dir, file_out=args.decTitleKey_out, data=sub_database, overwrite=args.overwrite)
+        if args.encTitleKey_out: self.app.t.requester_queue(type='write_encrypted', output_dir=args.output_dir, file_out=args.encTitleKey_out, data=sub_database, overwrite=args.overwrite)
+        if args.seeddb_out: self.app.t.requester_queue(type='write_crypto', output_dir=args.output_dir, file_out=args.seeddb_out, data=sub_database, overwrite=args.overwrite)
+        if args.ticket_out:
+            if args.output_dir: output_dir = args.output_dir
+            else: output_dir = 'Ticket'
+            if args.title_id:
+                self.app.t.requester_queue(type='write_ticket', title_id=args.title_id, output_dir=output_dir, file_out=args.ticket_out, overwrite=args.overwrite)
+            else:
+                for title_id in sub_database:
+                    self.app.t.requester_queue(type='write_ticket', title_id=title_id, output_dir=output_dir, file_out=args.ticket_out, overwrite=args.overwrite)
+        # Print out database
         if args.print_format:
             self.print_database(sub_database, print_format=args.print_format, title_header=args.title_header)
-
 
     def print_database(self, database, print_format='default', title_header=False):
         if print_format != 'default':
@@ -801,6 +889,7 @@ if cli.args:
 if cli.args.gui_mode:
     gui = GuiFrontend(app)
     gui.mainloop()
+app.t.end_queue()
 end_time = time.clock()
 if not app.verbose: app.print_err()
 app.log('Total run time: %s' % str(end_time - start_time))   ##FIXIT

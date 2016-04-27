@@ -64,14 +64,6 @@ import xml.etree.ElementTree as ET
 #====================#
 #   Generic Tools    #
 #====================#
-def pmkdir(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path): pass
-        else: raise
-
-
 class App:
     def __init__(self):
         ## Configure
@@ -270,62 +262,74 @@ class local_handler:
         self.ticket_magic    = '00010004919ebe464ad0f552cd1b72e7884910cf55a9f02e50789641d896683dc005bd0aea87079d8ac284c675065f74c8bf37c88044409502a022980bb8ad48383f6d28a79de39626ccb2b22a0f19e41032f094b39ff0133146dec8f6c1a9d55cd28d9e1c47b3d11f4f5426c2c780135a2775d3ca679bc7e834f0e0fb58e68860a71330fc95791793c8fba935a7a6908f229dee2a0ca6b9b23b12d495a6fe19d0d72648216878605a66538dbf376899905d3445fc5c727a0e13e0e2c8971c9cfa6c60678875732a4e75523d2f562f12aabd1573bf06c94054aefa81a71417af9a4a066d0ffc5ad64bab28b1ff60661f4437d49e1e0d9412eb4bcacf4cfd6a3408847982000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d43413030303030303033000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000158533030303030303063000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000137a0894ad505bb6c67e2e5bdd6a3bec43d910c772e9cc290da58588b77dcc11680bb3e29f4eabbb26e98c2601985c041bb14378e689181aad770568e928a2b98167ee3e10d072beef1fa22fa2aa3e13f11e1836a92a4281ef70aaf4e462998221c6fbb9bdd017e6ac590494e9cea9859ceb2d2a4c1766f2c33912c58f14a803e36fccdcccdc13fd7ae77c7a78d997e6acc35557e0d3e9eb64b43c92f4c50d67a602deb391b06661cd32880bd64912af1cbcb7162a06f02565d3b0ece4fcecddae8a4934db8ee67f3017986221155d131c6c3f09ab1945c206ac70c942b36f49a1183bcd78b6e4b47c6c5cac0f8d62f897c6953dd12f28b70c5b7df751819a9834652625000100010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010003704138efbbbda16a987dd901326d1c9459484c88a2861b91a312587ae70ef6237ec50e1032dc39dde89a96a8e859d76a98a6e7e36a0cfe352ca893058234ff833fcb3b03811e9f0dc0d9a52f8045b4b2f9411b67a51c44b5ef8ce77bd6d56ba75734a1856de6d4bed6d3a242c7c8791b3422375e5c779abf072f7695efa0f75bcb83789fc30e3fe4cc8392207840638949c7f688565f649b74d63d8d58ffadda571e9554426b1318fc468983d4c8a5628b06b6fc5d507c13e7a18ac1511eb6d62ea5448f83501447a9afb3ecc2903c9dd52f922ac9acdbef58c6021848d96e208732d3d1d9d9ea440d91621c7a99db8843c59c1f2e2c7d9b577d512c166d6f7e1aad4a774a37447e78fe2021e14a95d112a068ada019f463c7a55685aabb6888b9246483d18b9c806f474918331782344a4b8531334b26303263d9d2eb4f4bb99602b352f6ae4046c69a5e7e8e4a18ef9bc0a2ded61310417012fd824cc116cfb7c4c1f7ec7177a17446cbde96f3edd88fcd052f0b888a45fdaf2b631354f40d16e5fa9c2c4eda98e798d15e6046dc5363f3096b2c607a9d8dd55b1502a6ac7d3cc8d8c575998e7d796910c804c495235057e91ecd2637c9c1845151ac6b9a0490ae3ec6f47740a0db0ba36d075956cee7354ea3e9a4f2720b26550c7d394324bc0cb7e9317d8a8661f42191ff10b08256ce3fd25b745e5194906b4d61cb4c2e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f7400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001434130303030303030330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007be8ef6cb279c9e2eee121c6eaf44ff639f88f078b4b77ed9f9560b0358281b50e55ab721115a177703c7a30fe3ae9ef1c60bc1d974676b23a68cc04b198525bc968f11de2db50e4d9e7f071e562dae2092233e9d363f61dd7c19ff3a4a91e8f6553d471dd7b84b9f1b8ce7335f0f5540563a1eab83963e09be901011f99546361287020e9cc0dab487f140d6626a1836d27111f2068de4772149151cf69c61ba60ef9d949a0f71f5499f2d39ad28c7005348293c431ffbd33f6bca60dc7195ea2bcc56d200baf6d06d09c41db8de9c720154ca4832b69c08c69cd3b073a0063602f462d338061a5ea6c915cd5623579c3eb64ce44ef586d14baaa8834019b3eebeed3790001000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
         self.offset          = 0x140
         # Read and write binary files. Write should never be called from any frontend
-    def write_bin(self, type, database, secondary=None):
+    def write_bin(self, type, data, secondary=None):
+        if not data and not type == 'write_ticket': return
         n_entries=0
-        data=''
+        data_out=''
         if type == 'write_decrypted':
-            for title_id in database:
-                if not database[title_id]['dec_key']:
+            for title_id in data:
+                if not data[title_id]['dec_key']:
                     self.app.log('Skipping %s, missing decrypted key.' % title_id ,err=-1); continue  ##FIXIT
                 else:
-                    dec_key = database[title_id]['dec_key']
+                    dec_key = data[title_id]['dec_key']
                 reserved = ''.rjust(8, 'F')
-                common_key = database[title_id]['common_key']
-                data += '{}{}{}{}'.format(common_key, reserved, title_id, dec_key)
+                common_key = data[title_id]['common_key']
+                data_out += '{}{}{}{}'.format(common_key, reserved, title_id, dec_key)
                 n_entries += 1
             header = '{0}{0}{0}{1}'.format(reserved, hex(n_entries).split('x')[1].zfill(8))
             header = ''.join(reversed([header[i:i+2] for i in range(0, len(header), 2)]))
-            data = '{}{}'.format(header, data)
+            data_out = '{}{}'.format(header, data_out)
+            data_out = binascii.unhexlify(data_out.encode('utf-8'))
         if type == 'write_encrypted':
-            for title_id in database:
-                if not database[title_id]['enc_key']:
+            for title_id in data:
+                if not data[title_id]['enc_key']:
                     self.app.log('Skipping %s, missing encrypted key.' % title_id ,err=-1); continue  ##FIXIT
                 else:
-                    enc_key = database[title_id]['enc_key']
+                    enc_key = data[title_id]['enc_key']
                 reserved = ''.rjust(8, 'F')
-                common_key = database[title_id]['common_key']
-                data += '{}{}{}{}'.format(common_key, reserved, title_id, enc_key)
+                common_key = data[title_id]['common_key']
+                data_out += '{}{}{}{}'.format(common_key, reserved, title_id, enc_key)
                 n_entries += 1
             header = '{0}{0}{0}{1}'.format(reserved, hex(n_entries).split('x')[1].zfill(8))
             header = ''.join(reversed([header[i:i+2] for i in range(0, len(header), 2)]))
-            data = '{}{}'.format(header, data)
+            data_out = '{}{}'.format(header, data_out)
+            data_out = binascii.unhexlify(data_out.encode('utf-8'))
         if type == 'write_crypto':
-            for title in database:
-                if not database[title_id]['crypto']:
+            for title in data:
+                if not data[title_id]['crypto']:
                     self.log.add('Skipping %s, missing crypto seed.' % title_id ,err=-1); continue  ##FIXIT
                 else:
-                    crypto = database[title_id]['crypto']
+                    crypto = data[title_id]['crypto']
                 reserved  = ''.rjust(8, '0')
                 # Reverse title_id
                 rev_title_id = ''.join(reversed([title_id[i:i+2] for i in range(0, len(title_id), 2)]))
-                data += '{1}{2}{0}{0}'.format(reserved, rev_title_id, crypto)
+                data_out += '{1}{2}{0}{0}'.format(reserved, rev_title_id, crypto)
                 n_entries += 1
             header = '{0}{0}{0}{1}'.format(reserved, hex(n_entries).split('x')[1].zfill(8))
             header = ''.join(reversed([header[i:i+2] for i in range(0, len(header), 2)]))
-            data = '{}{}'.format(header, data)
+            data_out = '{}{}'.format(header, data_out)
+            data_out = binascii.unhexlify(data_out.encode('utf-8'))
         if type == 'write_xml':
             pass
         if type == 'write_csv':
             pass
         if type == 'write_ticket':
+            title_id = secondary.upper()[:16]
+            if not self.app.title_database[title_id]['enc_key']: return
+            enc_key = self.app.title_database[title_id]['enc_key']
             ticket_template = bytearray.fromhex(self.ticket_template)
-            try:
-                ticket_template[self.offset+0x9C:self.offset+0xA4] = bytearray.fromhex(secondary.upper()[:16])[0x0:0x8]
-            except Exception as e:
-                print('Exception (%s): %s' % (secondary, e))
-            #print(binascii.hexlify(ticket_template[self.offset+0x9C:self.offset+0xA4]))
-        if not n_entries: data = None
-        return data
+            ticket_magic = bytearray.fromhex(self.ticket_magic)
+            ticket_template[self.offset+0x9C:self.offset+0xA4] = bytearray.fromhex(title_id)[0x0:0x8]
+            ticket_template[self.offset+0x7F:self.offset+0x8F] = bytearray.fromhex(enc_key)[0x0:0x10]
+            if data:
+                tmd = bytearray(data.read()[:])
+                ticket_template[self.offset+0xA6:self.offset+0xA8] = tmd[self.offset+0x9C:self.offset+0x9E]
+            else:
+                ticket_template[self.offset+0xA6:self.offset+0xA8] = bytearray.fromhex('0000')[0x0:0x2]
+            data_out = ticket_template+ticket_magic
+            n_entries += 1
+        if not n_entries: data_out = None
+        return data_out
     def read_bin(self, type, data):
         # parses bytes into title database
         # This could be "simplified" into a more complex looking if statement with less repetitive code, but w/e #Clarity
@@ -469,6 +473,9 @@ class thread_handler:
             # Parses user requests and passes requests to the writer_queue
             a, queue_data = self.request_queue.get()
             type, data = (a['type'][:], a['data'])
+            if type == 'end_queue': 
+                self.request_queue.task_done()
+                break
             if type == 'pull_decrypted': 
                 data = self.app.w.request_url('http://3ds.nfshost.com/download') #Returns binary
             if type == 'pull_encrypted': 
@@ -511,16 +518,16 @@ class thread_handler:
                 data = self.app.l.write_bin(a['type'], data, secondary=a['title_id'])   #Data should be tmd
                 data = self.writer_queue(a, data)
             if type == 'write_decrypted':
-                data = self.app.l.write_bin(a['type'], data)  #Data should be database
+                data = self.app.l.write_bin(type, data)  #Data should be database
                 data = self.writer_queue(a, data)
             if type == 'write_encrypted':
-                data = self.app.l.write_bin(a['type'], data)  #Data should be database
+                data = self.app.l.write_bin(type, data)  #Data should be database
                 data = self.writer_queue(a, data)
             if type == 'write_crypto':
                 data = self.app.l.write_bin(a['type'], data)  #Data should be database
                 data = self.writer_queue(a, data)
             if type == 'write_xml':
-                data = self.app.l.write_bin(a['type'], data, secondary=a['secondary'])  #Data should be database
+                data = self.app.l.write_bin(type, data, secondary=a['secondary'])  #Data should be database
                 data = self.writer_queue(a, data)
             if type == 'write_csv':
                 data = self.app.l.write_bin(a['type'], data)  #Data should be database
@@ -528,12 +535,14 @@ class thread_handler:
             a.update({'data': data})
             queue_data.append(a)
             self.request_queue.task_done()
-            if type == 'end_queue': break
         return
     def writer_thread(self):
         while True:
             # Writes all incoming data to file
             type, output_dir, file_out, title_id, secondary, overwrite, data = self.write_queue.get()  #### FIXIT
+            if type == 'end_queue':
+                self.write_queue.task_done()
+                break
             output = ''
             if output_dir: output += '%s/' % output_dir
             if file_out: output += file_out
@@ -550,14 +559,24 @@ class thread_handler:
                     if not b[key]: b[key] = key
                 output = self.app.replace_string(output, limit_length=False)
                 output = output.format(b['title_name'], b['title_id'], b['dec_key'], b['enc_key'], b['crypto'], b['console_id'], b['region'], b['image_size'], b['type'], b['serial'], b['publisher'])
-            if not overwrite and os.path.isfile(output): return self.app.log(self.app.failed_overwrite % output, err=-1) ## FIXIT
-            '''pmkdir(output.rsplit(os.sep, 1))    ##Commented out write to file temporarily (for testing purposes)
+            if not data:
+                self.write_queue.task_done()
+                self.app.log('No data to write. Skipping %s' % output) ##FIXIT
+                continue
+            if not overwrite and os.path.isfile(output):
+                self.write_queue.task_done()
+                self.app.log(self.app.failed_overwrite % output, err=-1) ## FIXIT
+                continue
+            try:
+                os.makedirs(os.path.dirname(output), exist_ok=True)    ##Commented out write to file temporarily (for testing purposes)
+            except Exception as e:
+                print(type, output_dir, file_out, title_id, secondary, overwrite, data)
+                print(e)
             with open(output, 'wb') as file_handler:
                 file_handler.write(data)
-                file_handler.close()'''
+                file_handler.close()
             self.app.log('Write request completed: %s' % output) ##FIXIT
             self.write_queue.task_done()
-            if type == 'end_queue': break
         return
     def requester_queue(self, title_id=None, key=None, type=None, secondary=None, file_in=None, output_dir=None, file_out=None, data=None, overwrite=False, tmp=False):
         # Adds a new user request to the queue
@@ -574,17 +593,10 @@ class thread_handler:
             'temporary': tmp
             }
         self.request_queue.put((args, self.queue_data))
-        #thread_handle = threading.Thread(target=self.worker_thread, args=(0, self.run_event))
-        #thread_handle.start()
         self.app.log(self.app.added_to_queue % (type, 'request'))  ##FIXIT
     def writer_queue(self, a, data):
         # Adds a new write request to the queue
-        # If the writer thread is active, wait for it to rejoin main thread
-        #if self.writer_handle:
-        # Spawn new writer thread
         self.write_queue.put((a['type'], a['output_dir'], a['file_out'], a['title_id'], a['secondary'], a['overwrite'], data))
-        #self.writer_handle = threading.Thread(target=self.writer_thread, name='Thread-Writer', args=(0, self.run_event))
-        #self.writer_handle.start()
         self.app.log(self.app.added_to_queue % (a['type'], 'write'))  ##FIXIT
     def end_queue(self):
         args = {
@@ -603,6 +615,7 @@ class thread_handler:
         for i in range(self.app.threads_limit):
             self.request_queue.put((args, self.queue_data))
         # Wait for all worker threads to finish up and rejoin the main thread
+        print('Joining request queue threads')
         for thread in threading.enumerate():
             if thread is self.main_thread or thread is self.writer_handle:
                 continue
@@ -610,9 +623,11 @@ class thread_handler:
         # Send kill signal to writer thread
         self.write_queue.put(('end_queue', None, None, None, None, None, None))
         # Wait for writer thread to finish and rejoin the main thread
+        print('Joining write queue thread')
         for thread in threading.enumerate():
             if thread is self.main_thread:
                 continue
+            print('Joining thread post write end queue: %s' % thread.getName())
             thread.join()
 
 class CliFrontend:
@@ -663,6 +678,7 @@ class CliFrontend:
         # Parse arguments (maybe add loading priority, ex. load xml after csv)
         if args.verbose:
             self.app.verbose = 1
+        # Could probably split most of these checks into separate functions for reuse with the gui.
         # Loading data
         if args.title_id:
             if (len(args.title_id) is 16) and all(character in string.hexdigits for character in args.title_id):
@@ -719,11 +735,12 @@ class CliFrontend:
             elif args.pull_data in ['web', 'tmp']:
                 if args.pull_data == 'tmp': temp = True
                 else: temp = False
-                self.app.t.requester_queue(type='pull_xml', secondary='type_3dsdb', tmp=temp)
-                self.app.t.requester_queue(type='pull_xml', secondary='type_groovycia', tmp=temp)
-                self.app.t.requester_queue(type='pull_decrypted', tmp=temp)
-                self.app.t.requester_queue(type='pull_encrypted', tmp=temp)
+                self.app.t.requester_queue(type='pull_xml', file_out='data/3dsreleases.xml', secondary='type_3dsdb', overwrite=args.overwrite, tmp=temp)
+                self.app.t.requester_queue(type='pull_xml', file_out='data/community.xml', secondary='type_groovycia', overwrite=args.overwrite, tmp=temp)
+                self.app.t.requester_queue(type='pull_decrypted', file_out='data/decTitleKeys.bin', overwrite=args.overwrite, tmp=temp)
+                self.app.t.requester_queue(type='pull_encrypted', file_out='data/encTitleKeys.bin', overwrite=args.overwrite, tmp=temp)
 
+        print('Joining request queue')
         self.app.t.request_queue.join()
         sub_database = self.app.title_database.copy()
         ## Filter ##FIXIT
@@ -734,7 +751,7 @@ class CliFrontend:
         if args.seeddb_out: self.app.t.requester_queue(type='write_crypto', output_dir=args.output_dir, file_out=args.seeddb_out, data=sub_database, overwrite=args.overwrite)
         if args.ticket_out:
             if args.output_dir: output_dir = args.output_dir
-            else: output_dir = 'Ticket'
+            else: output_dir = 'tickets'
             if args.title_id:
                 self.app.t.requester_queue(type='write_ticket', title_id=args.title_id, output_dir=output_dir, file_out=args.ticket_out, overwrite=args.overwrite)
             else:

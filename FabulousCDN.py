@@ -55,7 +55,7 @@ import xml.etree.ElementTree as ET
 # Notes:
 # - Requester_queue provides interface for pulling and writing to HDD
 # - Writer_queue is exclusively called from worker_thread
-# - Common key? or Console ID? needs some verification as to what it is and if I should care about it
+# - Common key? needs some verification as to what it is and if I should care about it
 # Credits:
 # plailect, cearp - useful stuff
 # Analogman - adding another fucking useless format to deal with
@@ -97,9 +97,11 @@ class App:
         self.h_fmt_enc_key        = u'Encrypted Key'
         self.h_fmt_crypto         = u'Crypto Seed'
         self.h_fmt_region         = u'Region'
-        self.h_fmt_size           = u'Size'
+        self.h_fmt_image_size     = u'Image Size'
+        self.h_fmt_file_size      = u'File Size'
         self.h_fmt_type           = u'Type'
         self.h_fmt_serial         = u'Serial'
+        self.h_fmt_version        = u'Version'
         self.h_fmt_publisher      = u'Publisher'
         self.h_fmt_console_id     = u'ConsoleID'
         # Thread dialogue
@@ -152,7 +154,7 @@ class App:
         self.lock = threading.Lock()
 
 
-    def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, serial=None, image_crc=None, file_name=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, decrypted_title_key=None, encrypted_title_key=None, crypto=None, console_id='00000000', common_key='00000000'):
+    def add_entry(self, title_id, database_index=None, title_name=None, publisher=None, region=None, language=None, release_group=None, image_size=None, file_size=None, serial=None, image_crc=None, file_name=None, release_name=None, trimmed_size=None, firmware=None, type=None, card=None, version=None, decrypted_title_key=None, encrypted_title_key=None, crypto=None, console_id='00000000', common_key='00000000'):
         entry_template = {
                 'database_index' : database_index,    #Useless metadata
                 'title_name'     : title_name,
@@ -161,6 +163,7 @@ class App:
                 'language'       : language,
                 'release_group'  : release_group,     #Useless metadata
                 'image_size'     : image_size,
+                'file_size'      : file_size,
                 'serial'         : serial,
                 'title_id'       : title_id,
                 'image_crc'      : image_crc,         #Useless metadata
@@ -170,6 +173,7 @@ class App:
                 'firmware'       : firmware,          #Useless metadata
                 'type'           : title_id[:8],      ##Drop 3dsdb typing for tid_high typing
                 'card'           : card,              #Useless metadata
+                'version'        : version,
                 'dec_key'        : decrypted_title_key,
                 'enc_key'        : encrypted_title_key,
                 'crypto'         : crypto,
@@ -194,9 +198,11 @@ class App:
             ['%crypto', 32],
             ['%console_id', 10],
             ['%region', 6],
-            ['%size', 6],
+            ['%image_size', 6],
+            ['%file_size', 6],
             ['%type', 20],
             ['%serial', 10],
+            ['%version', 6],
             ['%publisher', 20]
             ]
         for i, string in enumerate(replacement_strings):
@@ -310,9 +316,53 @@ class local_handler:
             data_out = '{}{}'.format(header, data_out)
             data_out = binascii.unhexlify(data_out.encode('utf-8'))
         if type == 'write_xml':
-            pass
+            xml_declaration = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>'
+            if secondary == 'type_3dsdb':
+                root_tag = 'releases'
+                title_tag = 'release'
+                entry = [
+                    ['id', 'database_index'],
+                    ['name', 'title_name'],
+                    ['publisher', 'publisher'],
+                    ['region', 'region'],
+                    ['languages', 'language'],
+                    ['group', 'release_group'],
+                    ['image_size', 'image_size'],
+                    ['serial', 'serial'],
+                    ['titleid', 'title_id'],
+                    ['imagecrc', 'image_crc'],
+                    ['filename', 'file_name'],
+                    ['releasename', 'release_name'],
+                    ['trimmedsize', 'trimmed_size'],
+                    ['firmware', 'firmware'],
+                    ['type', 'type'],
+                    ['card', 'card']]
+            elif secondary == 'type_groovycia':
+                root_tag = 'database'
+                title_tag = 'Ticket'
+                entry = [
+                    ['name', 'title_name'],
+                    ['region', 'region'],
+                    ['serial', 'serial'],
+                    ['titleid', 'title_id']]
+            for title_id in data:
+                entry_out = ''
+                for field in entry:
+                    if data[title_id][field[1]]:
+                        field_data = data[title_id][field[1]]
+                    else:
+                        field_data = ''
+                    entry_out += '\n\t<{0}>{1}</{0}>'.format(field[0], field_data)
+                data_out += '\n<{0}>{1}\n</{0}>'.format(title_tag, entry_out)
+                n_entries += 1
+            data_out = '{0}\n<{1}>{2}\n</{1}>'.format(xml_declaration, root_tag, data_out)
+            data_out = data_out.encode('utf-8')
         if type == 'write_csv':
-            pass
+            if secondary == 'type_custom':
+                pass ##FIXIT add user-defined formatting output
+            elif secondary == 'type_csv':
+                header = 'Title Name,Title ID,Encrypted Title Key,Region,Product Code,Publisher,Current Version,Size (MiB)'
+            
         if type == 'write_ticket':
             title_id = secondary.upper()[:16]
             if not self.app.title_database[title_id]['enc_key']: return
@@ -329,6 +379,7 @@ class local_handler:
             data_out = ticket_template+ticket_magic
             n_entries += 1
         if not n_entries: data_out = None
+        self.app.log('Entries found: %s' % n_entries) ##FIXIT
         return data_out
     def read_bin(self, type, data):
         # parses bytes into title database
@@ -366,7 +417,6 @@ class local_handler:
                     crypto=binascii.hexlify(data.read(16)).decode('utf-8')
                     )
                 data.seek(8, os.SEEK_CUR)
-                
         if type.split('_')[1] == 'ticket':
             offset = self.offset
             ticket = data.read()
@@ -435,7 +485,7 @@ class local_handler:
             pattern = re.compile(r'(?P<title_name>[^"]+)(?:,"="")(?P<title_ID>[^,]+)(?:""",)(?P<enc_key>[^,]+)(?:,)(?P<region>[^,]+)(?:,")(?P<serial>[^"]+)(?:",")(?P<publisher>[^"]+)(?:",)(?P<ver_num>[^,]+)(?:,)(?P<size>[0-9]+.[0-9]+)')
             n_entries = len(re.findall(pattern, csv_file))
             for (title_name, title_id, enc_key, region, serial, publisher, ver_num, size) in re.findall(pattern,csv_file):
-                self.app.add_entry(title_id, title_name=title_name[2:], encrypted_title_key=enc_key, region=region, serial=serial, publisher=publisher, image_size=size)
+                self.app.add_entry(title_id, title_name=title_name[2:], encrypted_title_key=enc_key, region=region, serial=serial, publisher=publisher, file_size=size, version=ver_num)
         return self.app.title_database
     def load_file(self, type, path):
         # loads file into memory and passes back bytes
@@ -550,7 +600,8 @@ class thread_handler:
             elif type == 'write_encrypted': output += 'encTitleKeys.bin'
             elif type == 'write_crypto': output += 'seeddb.bin'
             elif type == 'write_ticket': output += '%s.tik' % title_id
-            elif type == 'write_xml': output += '3dsreleases.xml'
+            elif type == 'write_xml' and secondary == 'type_3dsdb': output += '3dsreleases.xml'
+            elif type == 'write_xml' and secondary == 'type_groovycia': output += 'community.xml'
             elif type == 'write_csv': output += 'titles.csv'
             # User-defined string
             if title_id:
@@ -558,7 +609,7 @@ class thread_handler:
                 for key in b:
                     if not b[key]: b[key] = key
                 output = self.app.replace_string(output, limit_length=False)
-                output = output.format(b['title_name'], b['title_id'], b['dec_key'], b['enc_key'], b['crypto'], b['console_id'], b['region'], b['image_size'], b['type'], b['serial'], b['publisher'])
+                output = output.format(b['title_name'], b['title_id'], b['dec_key'], b['enc_key'], b['crypto'], b['console_id'], b['region'], b['image_size'], b['type'], b['serial'], b['version'], b['publisher'])
             if not data:
                 self.write_queue.task_done()
                 self.app.log('No data to write. Skipping %s' % output) ##FIXIT
@@ -569,6 +620,8 @@ class thread_handler:
                 continue
             try:
                 os.makedirs(os.path.dirname(output), exist_ok=True)    ##Commented out write to file temporarily (for testing purposes)
+            except OSError:
+                pass #Pass exception when output doesn't have a subdirectory (os.path.dirname gives OSError)
             except Exception as e:
                 print(type, output_dir, file_out, title_id, secondary, overwrite, data)
                 print(e)
@@ -615,7 +668,7 @@ class thread_handler:
         for i in range(self.app.threads_limit):
             self.request_queue.put((args, self.queue_data))
         # Wait for all worker threads to finish up and rejoin the main thread
-        print('Joining request queue threads')
+        self.app.log('Joining request queue threads')
         for thread in threading.enumerate():
             if thread is self.main_thread or thread is self.writer_handle:
                 continue
@@ -623,11 +676,10 @@ class thread_handler:
         # Send kill signal to writer thread
         self.write_queue.put(('end_queue', None, None, None, None, None, None))
         # Wait for writer thread to finish and rejoin the main thread
-        print('Joining write queue thread')
+        self.app.log('Joining write queue thread')
         for thread in threading.enumerate():
             if thread is self.main_thread:
                 continue
-            print('Joining thread post write end queue: %s' % thread.getName())
             thread.join()
 
 class CliFrontend:
@@ -656,7 +708,8 @@ class CliFrontend:
         parser.add_argument('-do',  '--decTitleKey_out', nargs='?', action='store',       dest='decTitleKey_out', const='decTitleKey.bin', help='Outputs concatenated inputs to decTitleKey.bin')
         parser.add_argument('-eo',  '--encTitleKey_out', nargs='?', action='store',       dest='encTitleKey_out', const='encTitleKey.bin', help='Outputs concatenated inputs to encTitleKey.bin')
         parser.add_argument('-so',  '--seeddb_out',      nargs='?', action='store',       dest='seeddb_out',      const='seeddb.bin',      help='Outputs concatenated inputs to seeddb.bin')
-        ## xml out
+        parser.add_argument('-x3o',  '--x3dsdb_out',     nargs='?', action='store',       dest='xml_3dsdb_out',   const='3dsreleases.xml', help='Outputs concatenated inputs to 3dsreleases.xml')
+        parser.add_argument('-xgo',  '--xgroovy_out',    nargs='?', action='store',       dest='xml_groovy_out',  const='community.xml',   help='Outputs concatenated inputs to community.xml')
         parser.add_argument('-to',  '--ticket_out',      nargs='?', action='store',       dest='ticket_out',      const='%title_id.tik',   help='Outputs inputs to individual tickets <title_id>/<title_id>.tik')
         parser.add_argument('-fi',  '--filter',                     action='store',       dest='filter',                                   help='Filters output. Available input: USA, JPN, TWN, HKG, KOR, EUR, decrypted, encrypted, crypto, title, dlc, update, app, dlplay, demo, sysapp, sysapplet, sysmod, sysfirm, sysarc, twlsys, twlarc, <title_id>, <title_name>, <image_size>')
         parser.add_argument('-f',   '--force',                      action='store_true',  dest='overwrite',                                help='Force overwrite files')
@@ -740,7 +793,7 @@ class CliFrontend:
                 self.app.t.requester_queue(type='pull_decrypted', file_out='data/decTitleKeys.bin', overwrite=args.overwrite, tmp=temp)
                 self.app.t.requester_queue(type='pull_encrypted', file_out='data/encTitleKeys.bin', overwrite=args.overwrite, tmp=temp)
 
-        print('Joining request queue')
+        self.app.log('Joining request queue')
         self.app.t.request_queue.join()
         sub_database = self.app.title_database.copy()
         ## Filter ##FIXIT
@@ -749,6 +802,10 @@ class CliFrontend:
         if args.decTitleKey_out: self.app.t.requester_queue(type='write_decrypted', output_dir=args.output_dir, file_out=args.decTitleKey_out, data=sub_database, overwrite=args.overwrite)
         if args.encTitleKey_out: self.app.t.requester_queue(type='write_encrypted', output_dir=args.output_dir, file_out=args.encTitleKey_out, data=sub_database, overwrite=args.overwrite)
         if args.seeddb_out: self.app.t.requester_queue(type='write_crypto', output_dir=args.output_dir, file_out=args.seeddb_out, data=sub_database, overwrite=args.overwrite)
+        
+        if args.xml_3dsdb_out: self.app.t.requester_queue(type='write_xml', output_dir=args.output_dir, file_out=args.xml_3dsdb_out, secondary='type_3dsdb', data=sub_database, overwrite=args.overwrite)
+        if args.xml_groovy_out: self.app.t.requester_queue(type='write_xml', output_dir=args.output_dir, file_out=args.xml_groovy_out, secondary='type_groovycia', data=sub_database, overwrite=args.overwrite)
+
         if args.ticket_out:
             if args.output_dir: output_dir = args.output_dir
             else: output_dir = 'tickets'
@@ -776,9 +833,11 @@ class CliFrontend:
                 self.app.h_fmt_crypto,
                 self.app.h_fmt_console_id,
                 self.app.h_fmt_region,
-                self.app.h_fmt_size,
+                self.app.h_fmt_image_size,
+                self.app.h_fmt_file_size,
                 self.app.h_fmt_type,
                 self.app.h_fmt_serial,
+                self.app.h_fmt_version,
                 self.app.h_fmt_publisher
                 )
             split_line = re.sub(r'[^\{0-9:<^>.\}]', '-', format_string)
@@ -787,23 +846,25 @@ class CliFrontend:
             split_line = '{1}{0}{1}'.format(split_line[1:-1], '|')
             self.app.log(self.app.printing_database)
             self.app.xprint('{0}\n{1}\n{0}'.format(split_line, head_line))
-            tid_index = self.app.tid_index_extended
-            for title_id in database:
-                e = database[title_id]
-                (title_name, title_id, region, size, type, serial, publisher, dec_key, enc_key, crypto, console_id) = (e['title_name'], e['title_id'], e['region'], e['image_size'], e['type'], e['serial'], e['publisher'], e['dec_key'], e['enc_key'], e['crypto'], e['console_id'])
-                if not e['title_name']:  title_name  = ''.rjust(20, '-')
-                if not e['title_id']:    title_id    = ''.rjust(8, '-')
-                if not e['region']:      region      = ''.rjust(3, '-')
-                if not e['image_size']:  size        = ''.rjust(5, '-')
-                if not e['type']:        type        = ''.rjust(6, '-')
-                if not e['serial']:      serial      = ''.rjust(10, '-')
-                if not e['publisher']:   publisher   = ''.rjust(8, '-')
-                if not e['dec_key']:     dec_key     = ''.rjust(16, '-')
-                if not e['enc_key']:     enc_key     = ''.rjust(16, '-')
-                if not e['crypto']: crypto = ''.rjust(16, '-')
-                if not e['console_id']:  console_id  = ''.rjust(4, '-')
-                if type in tid_index: type = tid_index[type]
-                self.app.xprint(format_string.format(title_name, title_id, dec_key, enc_key, crypto, console_id, region, size, type, serial, publisher))
+        tid_index = self.app.tid_index_extended
+        for title_id in database:
+            e = database[title_id]
+            (title_name, title_id, region, image_size, file_size, type, serial, version, publisher, dec_key, enc_key, crypto, console_id) = (e['title_name'], e['title_id'], e['region'], e['image_size'], e['file_size'], e['type'], e['serial'], e['version'], e['publisher'], e['dec_key'], e['enc_key'], e['crypto'], e['console_id'])
+            if not e['title_name']:  title_name  = ''.rjust(20, '-')
+            if not e['title_id']:    title_id    = ''.rjust(8, '-')
+            if not e['region']:      region      = ''.rjust(3, '-')
+            if not e['image_size']:  image_size  = ''.rjust(5, '-')
+            if not e['file_size']:   file_size   = ''.rjust(5, '-')
+            if not e['type']:        type        = ''.rjust(6, '-')
+            if not e['serial']:      serial      = ''.rjust(10, '-')
+            if not e['version']:     version     = ''.rjust(4, '-')
+            if not e['publisher']:   publisher   = ''.rjust(8, '-')
+            if not e['dec_key']:     dec_key     = ''.rjust(16, '-')
+            if not e['enc_key']:     enc_key     = ''.rjust(16, '-')
+            if not e['crypto']:      crypto      = ''.rjust(16, '-')
+            if not e['console_id']:  console_id  = ''.rjust(4, '-')
+            if type in tid_index: type = tid_index[type]
+            self.app.xprint(format_string.format(title_name, title_id, dec_key, enc_key, crypto, console_id, region, image_size, file_size, type, serial, version, publisher))
 
 
 from tkinter import *

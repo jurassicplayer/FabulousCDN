@@ -90,7 +90,7 @@ class App:
         self.request_url_failed   = u'Failed to return data: %s'
         # -p --print title headers
         self.printing_database    = u'Printing current database...'
-        self.print_default        = u'| %title_name | %title_id | %serial | %region | %size | %type | %publisher | %dec_key | %enc_key | %crypto | %console_id |'
+        self.print_default        = u'| %title_name | %title_id | %serial | %region | %file_size | %type | %publisher | %dec_key | %enc_key | %crypto | %console_id |'
         self.h_fmt_title_name     = u'Title Name'
         self.h_fmt_title_id       = u'Title ID'
         self.h_fmt_dec_key        = u'Decrypted Key'
@@ -179,6 +179,7 @@ class App:
                 'crypto'         : crypto,
                 'console_id'     : console_id,
                 'common_key'     : common_key
+                ## FIXIT Add ticket data per FunkyCIA2
                 }
         # All caps certain entries
         capitalize = ['title_id', 'dec_key', 'enc_key', 'crypto', 'console_id', 'region', 'language', 'image_size', 'serial', 'image_crc', 'trimmed_size', 'type', 'card']
@@ -250,7 +251,7 @@ class web_handler:
                     self.app.log(self.app.request_url_data % (url, attempt+1, n_of_attempts))
                     url_data = urllib.request.urlopen(url)
             except Exception as e:
-                self.app.log(e) ##FIXIT
+                self.app.log(e, err=-1) #Report back any errors with the url (404, etc)
                 error = True
                 continue
             error = False
@@ -266,6 +267,8 @@ class local_handler:
         self.app.log('Local handler initialized.')
         self.ticket_template = '00010004d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0d15ea5e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d434130303030303030332d585330303030303030630000000000000000000000000000000000000000000000000000000000000000000000000000feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface010000CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC00000000000000000000000000AAAAAAAAAAAAAAAA00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010014000000ac000000140001001400000000000000280000000100000084000000840003000000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
         self.ticket_magic    = '00010004919ebe464ad0f552cd1b72e7884910cf55a9f02e50789641d896683dc005bd0aea87079d8ac284c675065f74c8bf37c88044409502a022980bb8ad48383f6d28a79de39626ccb2b22a0f19e41032f094b39ff0133146dec8f6c1a9d55cd28d9e1c47b3d11f4f5426c2c780135a2775d3ca679bc7e834f0e0fb58e68860a71330fc95791793c8fba935a7a6908f229dee2a0ca6b9b23b12d495a6fe19d0d72648216878605a66538dbf376899905d3445fc5c727a0e13e0e2c8971c9cfa6c60678875732a4e75523d2f562f12aabd1573bf06c94054aefa81a71417af9a4a066d0ffc5ad64bab28b1ff60661f4437d49e1e0d9412eb4bcacf4cfd6a3408847982000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f742d43413030303030303033000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000158533030303030303063000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000137a0894ad505bb6c67e2e5bdd6a3bec43d910c772e9cc290da58588b77dcc11680bb3e29f4eabbb26e98c2601985c041bb14378e689181aad770568e928a2b98167ee3e10d072beef1fa22fa2aa3e13f11e1836a92a4281ef70aaf4e462998221c6fbb9bdd017e6ac590494e9cea9859ceb2d2a4c1766f2c33912c58f14a803e36fccdcccdc13fd7ae77c7a78d997e6acc35557e0d3e9eb64b43c92f4c50d67a602deb391b06661cd32880bd64912af1cbcb7162a06f02565d3b0ece4fcecddae8a4934db8ee67f3017986221155d131c6c3f09ab1945c206ac70c942b36f49a1183bcd78b6e4b47c6c5cac0f8d62f897c6953dd12f28b70c5b7df751819a9834652625000100010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010003704138efbbbda16a987dd901326d1c9459484c88a2861b91a312587ae70ef6237ec50e1032dc39dde89a96a8e859d76a98a6e7e36a0cfe352ca893058234ff833fcb3b03811e9f0dc0d9a52f8045b4b2f9411b67a51c44b5ef8ce77bd6d56ba75734a1856de6d4bed6d3a242c7c8791b3422375e5c779abf072f7695efa0f75bcb83789fc30e3fe4cc8392207840638949c7f688565f649b74d63d8d58ffadda571e9554426b1318fc468983d4c8a5628b06b6fc5d507c13e7a18ac1511eb6d62ea5448f83501447a9afb3ecc2903c9dd52f922ac9acdbef58c6021848d96e208732d3d1d9d9ea440d91621c7a99db8843c59c1f2e2c7d9b577d512c166d6f7e1aad4a774a37447e78fe2021e14a95d112a068ada019f463c7a55685aabb6888b9246483d18b9c806f474918331782344a4b8531334b26303263d9d2eb4f4bb99602b352f6ae4046c69a5e7e8e4a18ef9bc0a2ded61310417012fd824cc116cfb7c4c1f7ec7177a17446cbde96f3edd88fcd052f0b888a45fdaf2b631354f40d16e5fa9c2c4eda98e798d15e6046dc5363f3096b2c607a9d8dd55b1502a6ac7d3cc8d8c575998e7d796910c804c495235057e91ecd2637c9c1845151ac6b9a0490ae3ec6f47740a0db0ba36d075956cee7354ea3e9a4f2720b26550c7d394324bc0cb7e9317d8a8661f42191ff10b08256ce3fd25b745e5194906b4d61cb4c2e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000526f6f7400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001434130303030303030330000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000007be8ef6cb279c9e2eee121c6eaf44ff639f88f078b4b77ed9f9560b0358281b50e55ab721115a177703c7a30fe3ae9ef1c60bc1d974676b23a68cc04b198525bc968f11de2db50e4d9e7f071e562dae2092233e9d363f61dd7c19ff3a4a91e8f6553d471dd7b84b9f1b8ce7335f0f5540563a1eab83963e09be901011f99546361287020e9cc0dab487f140d6626a1836d27111f2068de4772149151cf69c61ba60ef9d949a0f71f5499f2d39ad28c7005348293c431ffbd33f6bca60dc7195ea2bcc56d200baf6d06d09c41db8de9c720154ca4832b69c08c69cd3b073a0063602f462d338061a5ea6c915cd5623579c3eb64ce44ef586d14baaa8834019b3eebeed3790001000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+        self.tik_demo_patch  = ''.zfill(128)
+        self.tik_dlc_patch   = '00010014000000ac000000140001001400000000000000280000000100000084000000840003000000000000'+''.rjust(64,'f')+''.zfill(192)
         self.offset          = 0x140
         # Read and write binary files. Write should never be called from any frontend
     def write_bin(self, type, data, secondary=None):
@@ -361,14 +364,15 @@ class local_handler:
             if secondary == 'type_custom':
                 pass ##FIXIT add user-defined formatting output
             elif secondary == 'type_csv':
-                header = 'Title Name,Title ID,Encrypted Title Key,Region,Product Code,Publisher,Current Version,Size (MiB)'
-            
+                header = 'Title Name,Title ID,Encrypted Title Key,Region,Product Code,Publisher,Current Version,Size (MiB)'           
         if type == 'write_ticket':
             title_id = secondary.upper()[:16]
             if not self.app.title_database[title_id]['enc_key']: return
             enc_key = self.app.title_database[title_id]['enc_key']
             ticket_template = bytearray.fromhex(self.ticket_template)
             ticket_magic = bytearray.fromhex(self.ticket_magic)
+            demo_patch = bytearray.fromhex(self.tik_demo_patch)
+            dlc_patch = bytearray.fromhex(self.tik_dlc_patch)
             ticket_template[self.offset+0x9C:self.offset+0xA4] = bytearray.fromhex(title_id)[0x0:0x8]
             ticket_template[self.offset+0x7F:self.offset+0x8F] = bytearray.fromhex(enc_key)[0x0:0x10]
             if data:
@@ -376,6 +380,13 @@ class local_handler:
                 ticket_template[self.offset+0xA6:self.offset+0xA8] = tmd[self.offset+0x9C:self.offset+0x9E]
             else:
                 ticket_template[self.offset+0xA6:self.offset+0xA8] = bytearray.fromhex('0000')[0x0:0x2]
+            if blank_id:
+                ticket_template[self.offset+0x98:self.offset+0x9C] = bytearray.fromhex(''.zfill(8))[0x0:0x4]
+                ticket_template[self.offset+0xDC:self.offset+0xE0] = bytearray.fromhex(''.zfill(8))[0x0:0x4]
+            if patch_dlc:
+                ticket_template[self.offset+0x164:self.offset+0x210] = dlc_patch[0x0:0xAC]
+            if patch_demo:
+                ticket_template[self.offset+0x124:self.offset+0x164] = demo_patch[0x0:0x40]
             data_out = ticket_template+ticket_magic
             n_entries += 1
         if not n_entries: data_out = None
@@ -434,7 +445,7 @@ class local_handler:
             ticket_offsets = [match.start() for match in re.finditer(b'Root-CA00000003-XS0000000c', tickets)]
             tickets = bytearray(tickets)
             for offset in ticket_offsets:
-                common_key_index = tickets[offset+0xB1]  # common_key_index is worthless for what this script wants to do, but extra checks are always nice
+                common_key_index = tickets[offset+0xB1]
                 # Check if potentially valid ticket, offset+0x7C is always 0x1.
                 if tickets[offset+0x7C] != 0x1: continue
                 if common_key_index > 5: continue
@@ -442,7 +453,8 @@ class local_handler:
                 self.app.add_entry(
                     title_id = binascii.hexlify(tickets[offset+0x9C:offset+0xA4]).decode('utf-8'),
                     encrypted_title_key = binascii.hexlify(tickets[offset+0x7F:offset+0x8F]).decode('utf-8'),
-                    console_id = binascii.hexlify(tickets[offset+0x98:offset+0x9C]).decode('utf-8')
+                    console_id = binascii.hexlify(tickets[offset+0x98:offset+0x9C]).decode('utf-8'),
+                    common_key = common_key_index
                     )
         if type.split('_')[1] == 'xml':
             tree = ET.ElementTree(file=data)
@@ -589,7 +601,7 @@ class thread_handler:
     def writer_thread(self):
         while True:
             # Writes all incoming data to file
-            type, output_dir, file_out, title_id, secondary, overwrite, data = self.write_queue.get()  #### FIXIT
+            type, output_dir, file_out, title_id, secondary, overwrite, data = self.write_queue.get()
             if type == 'end_queue':
                 self.write_queue.task_done()
                 break
@@ -668,7 +680,7 @@ class thread_handler:
         for i in range(self.app.threads_limit):
             self.request_queue.put((args, self.queue_data))
         # Wait for all worker threads to finish up and rejoin the main thread
-        self.app.log('Joining request queue threads')
+        self.app.log('Joining request queue threads') ##FIXIT
         for thread in threading.enumerate():
             if thread is self.main_thread or thread is self.writer_handle:
                 continue
@@ -676,7 +688,7 @@ class thread_handler:
         # Send kill signal to writer thread
         self.write_queue.put(('end_queue', None, None, None, None, None, None))
         # Wait for writer thread to finish and rejoin the main thread
-        self.app.log('Joining write queue thread')
+        self.app.log('Joining write queue thread')  ##FIXIT
         for thread in threading.enumerate():
             if thread is self.main_thread:
                 continue
@@ -793,7 +805,7 @@ class CliFrontend:
                 self.app.t.requester_queue(type='pull_decrypted', file_out='data/decTitleKeys.bin', overwrite=args.overwrite, tmp=temp)
                 self.app.t.requester_queue(type='pull_encrypted', file_out='data/encTitleKeys.bin', overwrite=args.overwrite, tmp=temp)
 
-        self.app.log('Joining request queue')
+        self.app.log('Joining request queue') ##FIXIT
         self.app.t.request_queue.join()
         sub_database = self.app.title_database.copy()
         ## Filter ##FIXIT

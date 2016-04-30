@@ -23,7 +23,7 @@ if sys.version_info[0] != 3:
 #----------------------------
 # Imported Libraries
 #----------------------------
-import argparse, binascii, errno, io, os, queue, re, string, threading, urllib.request
+import argparse, binascii, errno, io, os, queue, re, ssl, string, threading, urllib.request
 import xml.etree.ElementTree as ET
 #----------------------------
 # argparse : Parse cli arguments
@@ -32,6 +32,7 @@ import xml.etree.ElementTree as ET
 # os       : Get basename of script and check file presence
 # queue    : Queue for threading
 # re       : Regexp search for ticket offset
+# ssl      : SSL context for title metadata
 # string   : Check if string is hexdecimal
 # threading: Threading for url requests
 # urllib   : Request url data
@@ -241,15 +242,56 @@ class web_handler:
     def __init__(self, App):
         self.app = App
         self.app.log('Web handler initialized.')
-    '''def pull_title_metadata(self, title_id):
+    def pull_title_metadata(self, title_id):
+        
+        ninja_url = 'https://ninja.ctr.shop.nintendo.net/ninja/ws/'
+        samurai_url = 'https://samurai.ctr.shop.nintendo.net/samurai/ws/'
+        region_array = ['DE', 'ES', 'FR', 'GB', 'HK', 'IT', 'JP', 'KR', 'NL', 'TW', 'US']
+        eur_array = ['DE', 'ES', 'FR', 'GB', 'IT', 'NL']
+        (shop_tree, shop_root) = self.get_xml_tree('%stitles/id_pair?title_id[]=%s' % (ninja_url, title_id), get_method=True)
+        ns_uid = shop_root[0][0][0].text
+        for country_code in region_array:
+            try:
+                title_request = urllib.request.Request(samurai_url + country_code + '/title/' + ns_uid)
+                ec_request = urllib.request.Request(ninja_url + country_code + '/title/' + ns_uid + '/ec_info')
+                title_data = self.request_url(title_request, context=ctr_context)
+                ec_data = self.request_url(ec_request, context=ctr_context)
+            except urllib.error.URLError as e:
+                continue
+        title_tree = ET.ElementTree(file=title_data)
+        title_root = title_tree.getroot()
+        ## FIXIT Grab metadata
+        ec_tree = ET.ElementTree(file=ec_data)
+        ec_root = ec_tree.getroot()
+        ## FIXIT Check for crypto seed
         self.log.add(self.app.not_implemented_yet % 'pull title metadata', err=-1)  ##FIXIT'''
-    def request_url(self, url):
+    def get_xml_tree(self, url, context=True, get_method=False):
+        cert_paths = ['', 'data/']
+        for path in cert_paths:
+            file_path = '%s%s' % (path, 'ctr-common-1.crt')
+            if os.path.isfile(file_path):
+                cert = file_path
+            file_path = '%s%s' % (path, 'ctr-common-1.key')
+            if os.path.isfile(file_path):
+                key = file_path
+        if not cert or not key: return self.app.log('ctr-common-1 files are missing. \nPlease make sure they are in the working folder or data directory.')
+        ctr_context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+        ctr_context.load_cert_chain(cert, keyfile=key)
+        request = urllib.request.Request(url)
+        if get_method:
+            request.get_method = lambda: 'GET'
+        xml_data = self.request_url(request, context=ctr_context)
+        if not xml_data: return
+        tree = ET.ElementTree(file=xml_data)
+        root = tree.getroot()
+        return (tree, root)
+    def request_url(self, url, context=None):
         n_of_attempts = 1
         for attempt in range(n_of_attempts):
             try:
                 if(attempt < n_of_attempts):
                     self.app.log(self.app.request_url_data % (url, attempt+1, n_of_attempts))
-                    url_data = urllib.request.urlopen(url)
+                    url_data = urllib.request.urlopen(url, context=context)
             except Exception as e:
                 self.app.log(e, err=-1) #Report back any errors with the url (404, etc)
                 error = True
@@ -547,7 +589,8 @@ class thread_handler:
                     data = self.app.w.request_url('http://3dsdb.com/xml.php') #Returns binary
                 elif a['secondary'] == 'type_groovycia':
                     data = self.app.w.request_url('http://ptrk25.github.io/GroovyFX/database/community.xml') #Returns binary
-            if type == 'pull_metadata': data = 0  ##FIXIT
+            if type == 'pull_metadata':
+                self.app.w.pull_title_metadata(a['title_id']) ##FIXIT
             if type in ['pull_decrypted', 'pull_encrypted', 'pull_xml']:
                 type = 'load_%s' % type.split('_')[1]
             # pass on a[type] and data, if a[type] pull_, then read_bin. if a[type] load_, then load_file
@@ -808,6 +851,13 @@ class CliFrontend:
         self.app.log('Joining request queue') ##FIXIT
         self.app.t.request_queue.join()
         sub_database = self.app.title_database.copy()
+        ## Get title metadata
+        if args.info:
+            if args.title_id:
+                self.app.t.requester_queue(type='pull_metadata', title_id=args.title_id)
+            else:
+                for entry in sub_database:
+                    self.app.t.requester_queue(type='pull_metadata', title_id=entry)
         ## Filter ##FIXIT
         
         ## Write anything

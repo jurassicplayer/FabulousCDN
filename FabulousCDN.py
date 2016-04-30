@@ -243,14 +243,14 @@ class web_handler:
         self.app = App
         self.app.log('Web handler initialized.')
     def pull_title_metadata(self, title_id):
-        
         ninja_url = 'https://ninja.ctr.shop.nintendo.net/ninja/ws/'
         samurai_url = 'https://samurai.ctr.shop.nintendo.net/samurai/ws/'
         region_array = ['DE', 'ES', 'FR', 'GB', 'HK', 'IT', 'JP', 'KR', 'NL', 'TW', 'US']
         eur_array = ['DE', 'ES', 'FR', 'GB', 'IT', 'NL']
-        (shop_tree, shop_root) = self.get_xml_tree('%stitles/id_pair?title_id[]=%s' % (ninja_url, title_id), get_method=True)
-        ns_uid = shop_root[0][0][0].text
-        for country_code in region_array:
+        shop = self.get_xml_tree('%stitles/id_pair?title_id[]=%s' % (ninja_url, title_id), get_method=True)
+        if not shop: return self.app.log('No eShop metadata found for %s' % title_id)  ##FIXIT
+        ns_uid = shop['root'][0][0][0].text
+        for country_code in region_array: ##Maybe make these threaded requests and clean up threads after complete
             try:
                 title_request = urllib.request.Request(samurai_url + country_code + '/title/' + ns_uid)
                 ec_request = urllib.request.Request(ninja_url + country_code + '/title/' + ns_uid + '/ec_info')
@@ -284,7 +284,7 @@ class web_handler:
         if not xml_data: return
         tree = ET.ElementTree(file=xml_data)
         root = tree.getroot()
-        return (tree, root)
+        return {'tree': tree, 'root': root}
     def request_url(self, url, context=None):
         n_of_attempts = 1
         for attempt in range(n_of_attempts):
